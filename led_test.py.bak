@@ -1,0 +1,116 @@
+#!/usr/bin/env python3
+import time
+import threading
+from datetime import datetime
+from RPLCD.i2c import CharLCD
+from gpiozero import Button, Servo
+import config
+
+# LCD initialisieren
+lcd = CharLCD('PCF8574', config.LCD_ADDRESS, cols=config.LCD_COLS, rows=config.LCD_ROWS)
+
+# Button (mit Bounce-Time, damit ein Tastendruck nur einmal ausgelöst wird) und Servo initialisieren
+button = Button(config.BUTTON_PIN, pull_up=True, bounce_time=0.5)
+servo = Servo(config.SERVO_PIN)
+servo.value = None  # Deaktiviert den Servo initial
+
+# Alarmvariablen
+alarm_triggered = False
+last_alarm_day = None  # Damit der Alarm nur einmal pro Tag ausgelöst wird
+
+# Variablen für den Servo-Thread
+servo_thread = None
+servo_stop_event = threading.Event()
+
+# Variable für Buttonanzeige
+button_pressed_flag = False
+button_pressed_time = 0
+
+def servo_waving(stop_event, servo):
+    print("[Servo Thread] Servo waving thread gestartet.")
+    while not stop_event.is_set():
+        servo.value = -0.5  # Linke Position
+        print("[Servo Thread] Servo auf -0.5 (links).")
+        time.sleep(0.5)
+        if stop_event.is_set():
+            break
+        servo.value = 0.5   # Rechte Position
+        print("[Servo Thread] Servo auf 0.5 (rechts).")
+        time.sleep(0.5)
+    servo.value = None
+    print("[Servo Thread] Stop-Event erkannt, Servo deaktiviert. Thread beendet.")
+
+def stop_servo_waving():
+    global servo_thread
+    if servo_thread is not None and servo_thread.is_alive():
+        print("[Main] Stoppe Servo waving thread.")
+        servo_stop_event.set()
+        servo_thread.join()
+        servo_thread = None
+        servo.value = None
+        print("[Main] Servo waving thread gestoppt und Servo deaktiviert.")
+
+def button_callback():
+    global alarm_triggered, button_pressed_flag, button_pressed_time
+    print("[Callback] Button gedrückt.")
+    # Flag setzen, damit für 2 Sekunden "Hallo lieber Tiago" angezeigt wird
+    button_pressed_flag = True
+    button_pressed_time = time.time()
+    if alarm_triggered:
+        alarm_triggered = False
+        print("[Callback] Alarm durch Button deaktiviert.")
+        stop_servo_waving()
+
+button.when_pressed = button_callback
+
+while True:
+    now = datetime.now()
+    time_str = now.strftime('%H:%M:%S')
+    hour = now.hour
+
+    # Bestimme den Gruß basierend auf der Uhrzeit
+    if 6 <= hour < 10:
+        greeting = "Guten Morgen"
+    elif 10 <= hour < 14:
+        greeting = "Guten Mittag"
+    elif 14 <= hour < 18:
+        greeting = "Guten Tag"
+    elif 18 <= hour < 21:
+        greeting = "Guten Abend"
+    else:
+        greeting = "Gute Nacht"
+    
+    # Prüfe, ob der Alarm (nur einmal pro Tag) ausgelöst werden soll.
+    # ACHTUNG: Stelle sicher, dass ALARM_HOUR und ALARM_MINUTE in der Zukunft liegen!
+    if config.ALARM_ENABLED and not alarm_triggered:
+        if now.hour == config.ALARM_HOUR and now.minute == config.ALARM_MINUTE and (last_alarm_day != now.day):
+            alarm_triggered = True
+            last_alarm_day = now.day
+            print(f"[Main] Alarm ausgelöst um {time_str}.")
+
+    # Aktualisiere Zeile 0 immer mit der aktuellen Uhrzeit
+    lcd.cursor_pos = (0, 0)
+    lcd.write_string(time_str.center(config.LCD_COLS))
+    
+    # Bestimme, was in Zeile 1 angezeigt werden soll:
+    # Bei kürzlich gedrücktem Button wird "Hallo lieber Tiago" für 2 Sekunden angezeigt,
+    # ansonsten "ALARM!" im Alarmfall oder der Gruß.
+    if button_pressed_flag:
+        line1 = "Hi Tiago".center(config.LCD_COLS)
+        if time.time() - button_pressed_time >= 2:
+            button_pressed_flag = False
+    elif alarm_triggered:
+        line1 = "     ALARM!    "  # 16 Zeichen breit
+    else:
+        line1 = greeting.center(config.LCD_COLS)
+    lcd.cursor_pos = (1, 0)
+    lcd.write_string(line1)
+    
+    # Falls der Alarm aktiv ist und der Servo-Thread nicht läuft, starte ihn.
+    if alarm_triggered and (servo_thread is None or not servo_thread.is_alive()):
+        print("[Main] Starte Servo waving thread.")
+        servo_stop_event.clear()  # Stop-Event zurücksetzen
+        servo_thread = threading.Thread(target=servo_waving, args=(servo_stop_event, servo))
+        servo_thread.start()
+
+    time.sleep(0.1)

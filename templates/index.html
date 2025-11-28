@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>Wecker Steuerung</title>
+    <style>
+        body { font-family: sans-serif; margin: 2rem; }
+        h1, h2 { color: #333; }
+        form { margin-bottom: 2rem; }
+        input, select, button { padding: 0.5rem; margin: 0.2rem; }
+        table { border-collapse: collapse; width: 100%; margin-top: 1rem; }
+        th, td { border: 1px solid #aaa; padding: 0.5rem; text-align: left; }
+    </style>
+</head>
+<body>
+    <h1>Wecker Weboberfläche</h1>
+
+    <h2>🔊 MP3-Dateien hochladen</h2>
+    <form action="/upload" method="post" enctype="multipart/form-data">
+        <input type="file" name="file" accept=".mp3">
+        <button type="submit">Hochladen</button>
+    </form>
+    <h3>Verfügbare MP3s</h3>
+    <ul>
+        {% for file in mp3_files %}
+            <li>
+                {{ file }}
+                <form action="{{ url_for('play_file', filename=file) }}" method="post" style="display:inline;">
+                    <button type="submit">Abspielen</button>
+                </form>
+            </li>
+            <h2>⏹️ Wiedergabe stoppen</h2>
+<form action="/stop" method="post">
+    <button type="submit">Stopp</button>
+</form>
+        {% endfor %}
+    </ul>
+
+    <h2>⏰ Alarmzeit einstellen</h2>
+    <form action="/set_alarm" method="post">
+        <label>Stunde:</label>
+        <input type="number" name="hour" value="{{ config.ALARM_HOUR }}" min="0" max="23">
+        <label>Minute:</label>
+        <input type="number" name="minute" value="{{ config.ALARM_MINUTE }}" min="0" max="59">
+        <button type="submit">Speichern</button>
+    </form>
+
+    <h2>📅 MP3-Zuweisung für bestimmte Tage</h2>
+    <form action="/set_mapping" method="post">
+        <label>Datum (YYYY-MM-DD oder MM-DD):</label>
+        <input type="text" name="date" placeholder="z. B. 12-24 oder 2025-07-23">
+        <label>Datei:</label>
+        <select name="filename">
+            {% for file in mp3_files %}
+                <option value="{{ file }}">{{ file }}</option>
+            {% endfor %}
+        </select>
+        <button type="submit">Zuweisen</button>
+    </form>
+
+    <h3>Aktuelle Zuweisungen</h3>
+    <table>
+        <tr>
+            <th>Datum</th>
+            <th>Datei</th>
+        </tr>
+        {% for date, file in mapping.items() %}
+        <tr>
+            <td>{{ date }}</td>
+            <td>{{ file }}</td>
+        </tr>
+        {% endfor %}
+    </table>
+</body>
+</html>
