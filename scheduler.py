@@ -3,7 +3,6 @@ from datetime import date, time as dtime
 import config
 from util import parse_hhmm, time_in_range
 
-
 # -----------------------------
 # Weck-Song / Nachricht pro Tag
 # -----------------------------
@@ -12,6 +11,7 @@ def get_today_wake_item():
     """
     1. Prüft, ob heute ein Lied in DATE_SONGS zugeordnet ist.
     2. Falls nein: rotiert durch WAKE_ITEMS (Fallback).
+    3. Falls nichts vorhanden: DEFAULT-Song/Message.
     """
     today = date.today()
     today_key = today.strftime("%m-%d")  # z.B. "12-05"
@@ -21,16 +21,16 @@ def get_today_wake_item():
         if entry.get("date") == today_key:
             return {
                 "file": entry.get("file"),
-                "message": entry.get("message", config.DEFAULT_WAKE_MESSAGE)
+                "message": entry.get("message", config.DEFAULT_MESSAGE)
             }
 
-    # 2. Fallback: rotierend aus WAKE_ITEMS
+    # 2. Fallback: rotierend aus WAKE_ITEMS (falls vorhanden)
     items = getattr(config, "WAKE_ITEMS", []) or []
     if items:
         idx = today.toordinal() % len(items)
         return items[idx]
 
-    # 3. Fallback, falls WAKE_ITEMS auch leer ist
+    # 3. Letzter Fallback
     return {
         "file": getattr(config, "DEFAULT_SONG", "mp3/happy.mp3"),
         "message": getattr(config, "DEFAULT_MESSAGE", "Guten Morgen!")
@@ -42,9 +42,9 @@ def get_today_wake_item():
 
 def get_greeting(now):
     """
-    Liefert ein Dict:
+    Liefert:
         { "text": "...", "backlight": True/False }
-    passend zur aktuellen Zeit.
+    passend zur aktuellen Uhrzeit gemäß config.GREETINGS.
     """
     t = now.time().replace(second=0, microsecond=0)
 
@@ -56,7 +56,6 @@ def get_greeting(now):
 
     # failsafe
     return {"text": "", "backlight": True}
-
 
 # -----------------------------
 # Alarmsteuerung
@@ -74,7 +73,7 @@ def check_alarm(now):
     if not config.ALARM_ENABLED:
         return False, None
 
-    hour  = now.hour
+    hour = now.hour
     minute = now.minute
 
     if (hour == config.ALARM_HOUR and

@@ -16,18 +16,18 @@ ALARM_BACKLIGHT = True
 # Format "MM-DD" → jedes Jahr gültig
 # Wird exakt an diesem Datum abgespielt
 DATE_SONGS = [
-    {"date": "12-11", "file": "mp3/xmas/all_i_want_for_xmas.mp3", "message": "Es geht los! Weihnachtszeit beginnt 🎄"},
-    {"date": "12-12", "file": "mp3/xmas/frosty_snowman.mp3", "message": "Es geht los! Weihnachtszeit beginnt 🎄"},
-    {"date": "12-13", "file": "mp3/xmas/jingle_bells.mp3", "message": "2. Dezember – Musik an! 🎶"},
-    {"date": "12-14", "file": "mp3/xmas/last_christmas.mp3", "message": "3. Dezember – Ein schöner Tag beginnt!"},
-    {"date": "12-15", "file": "mp3/xmas/let_it_snow.mp3", "message": "4. Dezember – Viel Freude heute! ⭐"},
-    {"date": "12-16", "file": "mp3/xmas/morgen_weihnachtsmann.mp3", "message": "5. Dezember – Musik für die Seele"},
-    {"date": "12-17", "file": "mp3/xmas/oh_tannenbaum.mp3", "message": "Nikolaus! 🎅"},
-    {"date": "12-18", "file": "mp3/xmas/otto_weihnachtsbaeckerei.mp3", "message": "Frohe Weihnachten! ✨"},
-    {"date": "12-19", "file": "mp3/xmas/polar_express.mp3", "message": "Schönen 1. Weihnachtstag! 🎁"},
-    {"date": "12-20", "file": "mp3/xmas/santa_claus_town.mp3", "message": "Schönen 2. Weihnachtstag! 🎄"},
-    {"date": "12-21", "file": "mp3/xmas/under_mistletoe.mp3", "message": "Schönen 2. Weihnachtstag! 🎄"},
-    {"date": "12-22", "file": "mp3/xmas/zuckowski_weihnachtsbaeckerei.mp3", "message": "Schönen 2. Weihnachtstag! 🎄"},
+    {"date": "12-11", "file": "mp3/xmas/maria.mp3", "message": "Happy Xmas"},
+    {"date": "12-12", "file": "mp3/xmas/frosty_snowman.mp3", "message": "2"},
+    {"date": "12-13", "file": "mp3/xmas/jingle_bells.mp3", "message": "3"},
+    {"date": "12-14", "file": "mp3/xmas/last_christmas.mp3", "message": "4"},
+    {"date": "12-15", "file": "mp3/xmas/let_it_snow.mp3", "message": "5"},
+    {"date": "12-16", "file": "mp3/xmas/morgen_weihnachtsmann.mp3", "message": "6"},
+    {"date": "12-17", "file": "mp3/xmas/oh_tannenbaum.mp3", "message": "7" },
+    {"date": "12-18", "file": "mp3/xmas/otto_weihnachtsbaeckerei.mp3", "message": "8"},
+    {"date": "12-19", "file": "mp3/xmas/polar_express.mp3", "message": "9"},
+    {"date": "12-20", "file": "mp3/xmas/santa_claus_town.mp3", "message": "10"},
+    {"date": "12-21", "file": "mp3/xmas/under_mistletoe.mp3", "message": "11"},
+    {"date": "12-22", "file": "mp3/xmas/zuckowski_weihnachtsbaeckerei.mp3", "message": "12"},
     
 ]
 

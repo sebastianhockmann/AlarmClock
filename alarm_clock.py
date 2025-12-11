@@ -7,37 +7,56 @@ from button import init_button
 from datetime import datetime, date
 import config
 import time
+from log import log
+from watchdog import Watchdog
+from util import scrolling_text
 
-from util import scrolling_text  # für die Schneeflocken-Anzeige
+# ---------------------------------------
+# Globale Zustände
+# ---------------------------------------
+
+# Spezialanzeige (Countdown / Manual / Schnee)
+special = {
+    "mode": None,         # "manual", "countdown", "snow"
+    "text": "",
+    "end": 0,
+    "snow_offset": 0
+}
 
 player = AudioPlayer()
-alarm_active = False
+wd = Watchdog(audio_player_ref=player, button_ref=None, special_ref=special)
 
-# Spezialanzeige (Countdown / Schnee)
-special_mode = None       # None, "countdown", "snow"
-special_text = ""
-special_mode_end = 0
-snow_offset = 0
+alarm_active = False
 
 # -----------------------------
 # Button-Aktionen
 # -----------------------------
 
 def single_click():
-    # Backlight toggeln
-    print("Schalte Backlight um")
+    wd.notify_button_event()
+    log("Schalte Backlight um")
     lcd_set_backlight(toggle=True)
 
 
 def double_click():
-    # Weihnachtssong des Tages abspielen
+    wd.notify_button_event()
+
     wake_item = get_today_wake_item()
-    print("[Button] Doppelklick → spiele Lied:", wake_item["file"])
-    player.play(wake_item["file"])
+    log("[Button] Doppelklick → spiele Lied:", wake_item["file"])
+
+    try:
+        player.play(wake_item["file"])
+    except Exception as e:
+        log("[Button] Fehler beim Starten des Liedes:", e)
+
+    # Spezialmodus anzeigen
+    special["text"] = wake_item["message"]
+    special["mode"] = "manual"
+    special["end"] = time.time() + 5
 
 
 def triple_click():
-    global special_mode, special_text, special_mode_end, snow_offset
+    wd.notify_button_event()
 
     today = date.today()
     year = today.year
@@ -46,7 +65,6 @@ def triple_click():
     if today <= dec24:
         days = (dec24 - today).days
     else:
-        # Wenn wir nach dem 24.12. sind → bis nächstes Jahr zählen
         dec24_next = date(year + 1, 12, 24)
         days = (dec24_next - today).days
 
@@ -57,22 +75,22 @@ def triple_click():
     else:
         msg = f"Noch {days} Tage"
 
-    print("[Button] Triple-Klick → Countdown:", msg)
+    log("[Button] Triple-Klick → Countdown:", msg)
 
-    special_text = msg
-    special_mode = "countdown"
-    special_mode_end = time.time() + 5   # 5 Sekunden Countdown anzeigen
-    snow_offset = 0                      # Schneeflocken-Startposition zurücksetzen
+    special["text"] = msg
+    special["mode"] = "countdown"
+    special["end"] = time.time() + 5
+    special["snow_offset"] = 0
 
 
 # Button initialisieren
 button = init_button(single_click, double_click, triple_click)
 
-
 # -----------------------------
 # Hauptschleife
 # -----------------------------
 while True:
+    #wd.beat()  # Watchdog-Herzschlag
     now = datetime.now()
 
     # Alarm prüfen
@@ -91,26 +109,29 @@ while True:
     # -----------------------------
     # Display-Steuerung mit Spezialmodus
     # -----------------------------
+    mode = special["mode"]
     display_text = None
 
-    if special_mode == "countdown":
-        # Countdown-Text anzeigen
-        display_text = special_text
-        # Nach Ablauf in Schneemodus wechseln
-        if time.time() > special_mode_end:
-            special_mode = "snow"
-            special_mode_end = time.time() + 15  # 15 Sekunden Schneeflocken
+    if mode == "manual":
+        display_text = special["text"]
+        if time.time() > special["end"]:
+            special["mode"] = None
 
-    elif special_mode == "snow":
-        # einfache Schneeflocken-Animation über die untere Zeile
+    elif mode == "countdown":
+        display_text = special["text"]
+        if time.time() > special["end"]:
+            special["mode"] = "snow"
+            special["end"] = time.time() + 15
+
+    elif mode == "snow":
         pattern = "*   *   *   *   *   "
-        display_text = scrolling_text(pattern, config.LCD_COLS, snow_offset)
-        snow_offset += 1
-        # Nach Ablauf zurück in den Normalmodus
-        if time.time() > special_mode_end:
-            special_mode = None
+        display_text = scrolling_text(pattern, config.LCD_COLS, special["snow_offset"])
+        special["snow_offset"] += 1
 
-    # Wenn kein Spezialmodus aktiv ist → normaler Text
+        if time.time() > special["end"]:
+            special["mode"] = None
+
+    # Normaler Modus, wenn kein Spezialmodus aktiv
     if display_text is None:
         if alarm_active:
             display_text = wake_item["message"]
@@ -118,7 +139,6 @@ while True:
             greeting = get_greeting(now)
             display_text = greeting["text"]
 
-    # Anzeige tatsächlich schreiben
     lcd_show(now, display_text)
 
     time.sleep(0.1)
