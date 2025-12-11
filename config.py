@@ -16,15 +16,19 @@ ALARM_BACKLIGHT = True
 # Format "MM-DD" → jedes Jahr gültig
 # Wird exakt an diesem Datum abgespielt
 DATE_SONGS = [
-    {"date": "12-01", "file": "mp3/xmas/song1.mp3", "message": "Es geht los! Weihnachtszeit beginnt 🎄"},
-    {"date": "12-02", "file": "mp3/xmas/song2.mp3", "message": "2. Dezember – Musik an! 🎶"},
-    {"date": "12-03", "file": "mp3/xmas/song3.mp3", "message": "3. Dezember – Ein schöner Tag beginnt!"},
-    {"date": "12-04", "file": "mp3/xmas/song4.mp3", "message": "4. Dezember – Viel Freude heute! ⭐"},
-    {"date": "12-05", "file": "mp3/xmas/song5.mp3", "message": "5. Dezember – Musik für die Seele"},
-    {"date": "12-06", "file": "mp3/xmas/nicholas.mp3", "message": "Nikolaus! 🎅"},
-    {"date": "12-24", "file": "mp3/xmas/heiligabend.mp3", "message": "Frohe Weihnachten! ✨"},
-    {"date": "12-25", "file": "mp3/xmas/christmas_day.mp3", "message": "Schönen 1. Weihnachtstag! 🎁"},
-    {"date": "12-26", "file": "mp3/xmas/zweiter_feiertag.mp3", "message": "Schönen 2. Weihnachtstag! 🎄"},
+    {"date": "12-11", "file": "mp3/xmas/all_i_want_for_xmas.mp3", "message": "Es geht los! Weihnachtszeit beginnt 🎄"},
+    {"date": "12-12", "file": "mp3/xmas/frosty_snowman.mp3", "message": "Es geht los! Weihnachtszeit beginnt 🎄"},
+    {"date": "12-13", "file": "mp3/xmas/jingle_bells.mp3", "message": "2. Dezember – Musik an! 🎶"},
+    {"date": "12-14", "file": "mp3/xmas/last_christmas.mp3", "message": "3. Dezember – Ein schöner Tag beginnt!"},
+    {"date": "12-15", "file": "mp3/xmas/let_it_snow.mp3", "message": "4. Dezember – Viel Freude heute! ⭐"},
+    {"date": "12-16", "file": "mp3/xmas/morgen_weihnachtsmann.mp3", "message": "5. Dezember – Musik für die Seele"},
+    {"date": "12-17", "file": "mp3/xmas/oh_tannenbaum.mp3", "message": "Nikolaus! 🎅"},
+    {"date": "12-18", "file": "mp3/xmas/otto_weihnachtsbaeckerei.mp3", "message": "Frohe Weihnachten! ✨"},
+    {"date": "12-19", "file": "mp3/xmas/polar_express.mp3", "message": "Schönen 1. Weihnachtstag! 🎁"},
+    {"date": "12-20", "file": "mp3/xmas/santa_claus_town.mp3", "message": "Schönen 2. Weihnachtstag! 🎄"},
+    {"date": "12-21", "file": "mp3/xmas/under_mistletoe.mp3", "message": "Schönen 2. Weihnachtstag! 🎄"},
+    {"date": "12-22", "file": "mp3/xmas/zuckowski_weihnachtsbaeckerei.mp3", "message": "Schönen 2. Weihnachtstag! 🎄"},
+    
 ]
 
 # Welche Audiokarte soll verwendet werden?
@@ -43,9 +47,9 @@ GREETINGS = [
     {"start": "06:00", "end": "10:00", "text": "Guten Morgen", "backlight": True},
     {"start": "10:00", "end": "14:00", "text": "Guten Mittag", "backlight": True},
     {"start": "14:00", "end": "18:00", "text": "Guten Tag",    "backlight": True},
-    {"start": "18:00", "end": "22:00", "text": "Guten Abend",  "backlight": True},
+    {"start": "18:00", "end": "20:30", "text": "Guten Abend",  "backlight": True},
     # Nacht: Display aus
-    {"start": "22:00", "end": "06:00", "text": "Gute Nacht",   "backlight": False},
+    {"start": "20:30", "end": "06:00", "text": "Gute Nacht",   "backlight": False},
 ]
 
 # =========================
