@@ -1,0 +1,39 @@
+# --- Python Bytecode ---
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# --- Virtual Environments ---
+venv/
+.env/
+.venv/
+env/
+
+# --- Editor / IDE ---
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# --- Logs & Temp Files ---
+*.log
+*.tmp
+*.bak
+
+# --- OS / Deployment ---
+.DS_Store
+Thumbs.db
+
+# --- Python Packaging ---
+*.egg
+*.egg-info/
+dist/
+build/
+
+# --- Audio Files (falls du sie nicht committen willst) ---
+# mp3/
+# *.mp3
+
+# --- Local config overrides (falls du welche anlegst) ---
+config_local.py
