@@ -15,9 +15,12 @@ from util import scrolling_text
 # Globale Zustände
 # ---------------------------------------
 
+print("CONFIG FILE:", config.__file__)
+
+
 # Spezialanzeige (Countdown / Manual / Schnee)
 special = {
-    "mode": None,         # "manual", "countdown", "snow"
+    "mode": None,         # None, "manual", "countdown", "snow"
     "text": "",
     "end": 0,
     "snow_offset": 0
@@ -26,7 +29,11 @@ special = {
 player = AudioPlayer()
 wd = Watchdog(audio_player_ref=player, button_ref=None, special_ref=special)
 
+# Alarm-Zustand
 alarm_active = False
+alarm_start_time = 0
+ALARM_MAX_DURATION = 5 * 60   # 5 Minuten
+current_wake_item = None     # merkt sich das aktuelle Alarm-Lied + Text
 
 # -----------------------------
 # Button-Aktionen
@@ -34,7 +41,20 @@ alarm_active = False
 
 def single_click():
     wd.notify_button_event()
-    log("Schalte Backlight um")
+
+    global alarm_active, current_wake_item
+
+    # Alarm manuell beenden
+    if alarm_active:
+        log("[Button] Alarm manuell beendet")
+        alarm_active = False
+        current_wake_item = None
+        player.stop()
+        stop_servo_waving()
+        return
+
+    # Kein Alarm → Backlight toggeln
+    log("[Button] Backlight umgeschaltet")
     lcd_set_backlight(toggle=True)
 
 
@@ -49,7 +69,7 @@ def double_click():
     except Exception as e:
         log("[Button] Fehler beim Starten des Liedes:", e)
 
-    # Spezialmodus anzeigen
+    # Text kurz anzeigen
     special["text"] = wake_item["message"]
     special["mode"] = "manual"
     special["end"] = time.time() + 5
@@ -90,21 +110,29 @@ button = init_button(single_click, double_click, triple_click)
 # Hauptschleife
 # -----------------------------
 while True:
-    #wd.beat()  # Watchdog-Herzschlag
+    # wd.beat()  # optional: systemd-Watchdog
+
     now = datetime.now()
 
-    # Alarm prüfen
+    # Alarm prüfen (nur Start!)
     alarm_state, wake_item = check_alarm(now)
 
     if alarm_state and not alarm_active:
+        log("[ALARM] Alarm gestartet")
         alarm_active = True
+        alarm_start_time = time.time()
+        current_wake_item = wake_item
         player.play(wake_item["file"])
         start_servo_waving()
 
-    elif not alarm_state and alarm_active:
-        alarm_active = False
-        player.stop()
-        stop_servo_waving()
+    # Automatisches Stoppen nach 5 Minuten
+    if alarm_active:
+        if time.time() - alarm_start_time >= ALARM_MAX_DURATION:
+            log("[ALARM] Automatisch beendet (Timeout)")
+            alarm_active = False
+            current_wake_item = None
+            player.stop()
+            stop_servo_waving()
 
     # -----------------------------
     # Display-Steuerung mit Spezialmodus
@@ -127,14 +155,13 @@ while True:
         pattern = "*   *   *   *   *   "
         display_text = scrolling_text(pattern, config.LCD_COLS, special["snow_offset"])
         special["snow_offset"] += 1
-
         if time.time() > special["end"]:
             special["mode"] = None
 
-    # Normaler Modus, wenn kein Spezialmodus aktiv
+    # Normaler Modus
     if display_text is None:
-        if alarm_active:
-            display_text = wake_item["message"]
+        if alarm_active and current_wake_item:
+            display_text = current_wake_item["message"]
         else:
             greeting = get_greeting(now)
             display_text = greeting["text"]

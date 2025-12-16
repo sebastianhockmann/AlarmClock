@@ -4,8 +4,25 @@
 # Alarm-Einstellungen
 # =========================
 ALARM_ENABLED = True
-ALARM_HOUR = 6        # Weckzeit Stunde
-ALARM_MINUTE = 15     # Weckzeit Minute
+
+# =========================
+# Weckzeiten pro Wochentag
+# =========================
+# weekday(): Montag=0 ... Sonntag=6
+
+ALARM_TIMES = {
+    0: {"hour": 6, "minute": 15},  # Montag
+    1: {"hour": 19, "minute": 16},  # Dienstag
+    2: {"hour": 6, "minute": 15},  # Mittwoch
+    3: {"hour": 6, "minute": 15},  # Donnerstag
+    4: {"hour": 6, "minute": 30},  # Freitag (später 🎉)
+    5: {"hour": 8, "minute": 0},   # Samstag
+    6: {"hour": 8, "minute": 0},   # Sonntag
+}
+
+# Fallback, falls ein Tag fehlt
+DEFAULT_ALARM_TIME = {"hour": 6, "minute": 15}
+
 
 # Wenn True: beim Alarm Backlight auf jeden Fall AN
 ALARM_BACKLIGHT = True

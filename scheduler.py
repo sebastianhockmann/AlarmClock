@@ -4,6 +4,30 @@ import config
 from util import parse_hhmm, time_in_range
 
 # -----------------------------
+# Weckzeit pro Tag
+# -----------------------------
+
+def get_today_alarm_time(now):
+    """
+    Liefert datetime.time für die heutige Weckzeit
+    basierend auf config.ALARM_TIMES (Wochentag)
+    """
+    weekday = now.weekday()  # Montag=0
+
+    alarm_times = getattr(config, "ALARM_TIMES", {})
+    default_time = getattr(
+        config,
+        "DEFAULT_ALARM_TIME",
+        {"hour": 6, "minute": 15}   # HARTE DEFAULTS
+    )
+
+    entry = alarm_times.get(weekday, default_time)
+
+    return dtime(entry["hour"], entry["minute"])
+
+
+
+# -----------------------------
 # Weck-Song / Nachricht pro Tag
 # -----------------------------
 
@@ -24,7 +48,7 @@ def get_today_wake_item():
                 "message": entry.get("message", config.DEFAULT_MESSAGE)
             }
 
-    # 2. Fallback: rotierend aus WAKE_ITEMS (falls vorhanden)
+    # 2. Fallback: rotierend aus WAKE_ITEMS
     items = getattr(config, "WAKE_ITEMS", []) or []
     if items:
         idx = today.toordinal() % len(items)
@@ -35,6 +59,7 @@ def get_today_wake_item():
         "file": getattr(config, "DEFAULT_SONG", "mp3/happy.mp3"),
         "message": getattr(config, "DEFAULT_MESSAGE", "Guten Morgen!")
     }
+
 
 # -----------------------------
 # Greeting (Tag, Nacht etc.)
@@ -57,6 +82,7 @@ def get_greeting(now):
     # failsafe
     return {"text": "", "backlight": True}
 
+
 # -----------------------------
 # Alarmsteuerung
 # -----------------------------
@@ -70,18 +96,29 @@ def check_alarm(now):
     """
     global _last_alarm_day
 
-    if not config.ALARM_ENABLED:
+    if not getattr(config, "ALARM_ENABLED", False):
         return False, None
 
-    hour = now.hour
-    minute = now.minute
+    # Zeit muss gültig sein (nach Boot/NTP)
+    if now.year < 2024:
+        return False, None
 
-    if (hour == config.ALARM_HOUR and
-        minute == config.ALARM_MINUTE and
-        _last_alarm_day != now.day):
+    target = get_today_alarm_time(now)
 
+    now_t = now.time()
+    target_seconds = target.hour * 3600 + target.minute * 60
+    now_seconds = now_t.hour * 3600 + now_t.minute * 60 + now_t.second
+
+    # Alarm-Fenster: 0–60 Sekunden nach Weckzeit
+    ALARM_WINDOW = 60
+
+    if (
+        target_seconds <= now_seconds < target_seconds + ALARM_WINDOW
+        and _last_alarm_day != now.day
+    ):
         _last_alarm_day = now.day
         wake_item = get_today_wake_item()
         return True, wake_item
 
     return False, None
+
