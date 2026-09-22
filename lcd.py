@@ -5,16 +5,22 @@ lcd = CharLCD(
     'PCF8574',
     config.LCD_ADDRESS,
     cols=config.LCD_COLS,
+    port=config.LCD_I2C_PORT,
     rows=config.LCD_ROWS
 )
 
 _backlight_manual = False
 _backlight_state = True
+_last_lines = [None, None]
 
 def _sanitize(text: str) -> str:
     """Nur ASCII, LCD-kompatibel, exakt 16 Zeichen."""
     if text is None:
         text = ""
+
+    for original, replacement in (("ä", "ae"), ("ö", "oe"), ("ü", "ue"),
+                                  ("Ä", "Ae"), ("Ö", "Oe"), ("Ü", "Ue"), ("ß", "ss")):
+        text = text.replace(original, replacement)
 
     # Nicht ASCII → ersetzen
     filtered = ''.join(
@@ -30,18 +36,15 @@ def _sanitize(text: str) -> str:
 
 def lcd_show(now, text):
     """Zeigt Uhrzeit + 1 Textzeile. Beide exakt 16 Zeichen."""
-    # Zeile 0
-    line1 = now.strftime("%H:%M:%S").ljust(config.LCD_COLS)
-    lcd.cursor_pos = (0, 0)
-    lcd.write_string(line1)
-
-    # Zeile 1
-    safe = _sanitize(text)
-    lcd.cursor_pos = (1, 0)
-    lcd.write_string(safe)
+    lines = [_sanitize(now.strftime("%H:%M:%S")), _sanitize(text)]
+    for row, line in enumerate(lines):
+        if _last_lines[row] != line:
+            lcd.cursor_pos = (row, 0)
+            lcd.write_string(line)
+            _last_lines[row] = line
 
 
-def lcd_set_backlight(toggle=False, state=None):
+def lcd_set_backlight(toggle=False, state=None, force=False):
     global _backlight_manual, _backlight_state
 
     if toggle:
@@ -51,4 +54,10 @@ def lcd_set_backlight(toggle=False, state=None):
         if not _backlight_manual:
             _backlight_state = state
 
-    lcd.backlight_enabled = _backlight_state
+    target = bool(state) if force and state is not None else _backlight_state
+    if lcd.backlight_enabled != target:
+        lcd.backlight_enabled = target
+
+
+def lcd_close():
+    lcd.close(clear=True)

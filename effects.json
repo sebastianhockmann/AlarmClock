@@ -1,0 +1,18 @@
+[
+  {"id": "off", "name": "Licht aus", "key": "0", "state": {"on": false}},
+  {"id": "solid", "name": "Solid", "key": "1", "state": {"on": true, "bri": 128, "seg": [{"id": 0, "fx": 0, "col": [[255, 160, 70]]}]}},
+  {"id": "breathe", "name": "Breathe", "key": "2", "state": {"on": true, "bri": 160, "seg": [{"id": 0, "fx": 2, "col": [[255, 200, 150]]}]}},
+  {"id": "colorloop", "name": "Colorloop", "key": "3", "state": {"on": true, "bri": 160, "seg": [{"id": 0, "fx": 8}]}},
+  {"id": "rainbow", "name": "Rainbow", "key": "4", "state": {"on": true, "bri": 180, "seg": [{"id": 0, "fx": 9}]}},
+  {"id": "theater", "name": "Theater", "key": "5", "state": {"on": true, "bri": 160, "seg": [{"id": 0, "fx": 13, "col": [[255, 255, 255]]}]}},
+  {"id": "chase_rainbow", "name": "Chase Rainbow", "key": "6", "state": {"on": true, "bri": 180, "seg": [{"id": 0, "fx": 30}]}},
+  {"id": "candle", "name": "Candle", "key": "7", "state": {"on": true, "bri": 140, "seg": [{"id": 0, "fx": 88, "col": [[255, 140, 20]]}]}},
+  {"id": "fire_2012", "name": "Fire 2012", "key": "8", "state": {"on": true, "bri": 180, "seg": [{"id": 0, "fx": 66}]}},
+  {"id": "twinklefox", "name": "Twinklefox", "key": "9", "state": {"on": true, "bri": 160, "seg": [{"id": 0, "fx": 80, "col": [[120, 160, 255]]}]}},
+  {"id": "aurora", "name": "Aurora", "key": "A", "state": {"on": true, "bri": 180, "seg": [{"id": 0, "fx": 38}]}},
+  {"id": "fireworks", "name": "Fireworks", "key": "B", "state": {"on": true, "bri": 200, "seg": [{"id": 0, "fx": 42}]}},
+  {"id": "lightning", "name": "Lightning", "key": "C", "state": {"on": true, "bri": 200, "seg": [{"id": 0, "fx": 57}]}},
+  {"id": "plasma", "name": "Plasma", "key": "D", "state": {"on": true, "bri": 180, "seg": [{"id": 0, "fx": 97}]}},
+  {"id": "sunrise", "name": "Sunrise", "key": "*", "state": {"on": true, "bri": 200, "seg": [{"id": 0, "fx": 104}]}},
+  {"id": "pacifica", "name": "Pacifica", "key": "#", "state": {"on": true, "bri": 160, "seg": [{"id": 0, "fx": 101}]}}
+]

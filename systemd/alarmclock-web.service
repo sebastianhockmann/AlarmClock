@@ -1,0 +1,16 @@
+[Unit]
+Description=AlarmClock - Weboberflaeche (waitress, nur localhost; nginx macht sie im LAN erreichbar)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=pi
+WorkingDirectory=/home/pi/AlarmClock
+# Bindet absichtlich nur an localhost: der externe Zugriff läuft über nginx (Port 80).
+ExecStart=/home/pi/AlarmClock/.venv/bin/waitress-serve --host=127.0.0.1 --port=8080 webserver:app
+Restart=on-failure
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target

@@ -37,3 +37,7 @@ build/
 
 # --- Local config overrides (falls du welche anlegst) ---
 config_local.py
+
+# Runtime settings written by the optional web UI
+settings.json
+mp3_mapping.json

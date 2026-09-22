@@ -2,19 +2,28 @@
 from datetime import date, time as dtime
 import config
 from util import parse_hhmm, time_in_range
+from settings import alarm_enabled, alarm_time, read_json, MAPPING_FILE
 
 # -----------------------------
 # Weck-Song / Nachricht pro Tag
 # -----------------------------
 
-def get_today_wake_item():
+def get_today_wake_item(today=None):
     """
     1. Prüft, ob heute ein Lied in DATE_SONGS zugeordnet ist.
     2. Falls nein: rotiert durch WAKE_ITEMS (Fallback).
     3. Falls nichts vorhanden: DEFAULT-Song/Message.
     """
-    today = date.today()
+    today = today or date.today()
     today_key = today.strftime("%m-%d")  # z.B. "12-05"
+
+    mapping = read_json(MAPPING_FILE)
+    mapped = mapping.get(today.isoformat(), mapping.get(today_key))
+    if isinstance(mapped, str):
+        mapped = {"file": "mp3/" + mapped}
+    if isinstance(mapped, dict) and isinstance(mapped.get("file"), str):
+        return {"file": mapped["file"],
+                "message": mapped.get("message", config.DEFAULT_MESSAGE)}
 
     # 1. Datumsspezifische Einträge prüfen
     for entry in getattr(config, "DATE_SONGS", []):
@@ -70,18 +79,19 @@ def check_alarm(now):
     """
     global _last_alarm_day
 
-    if not config.ALARM_ENABLED:
+    if not alarm_enabled():
         return False, None
 
+    alarm_hour, alarm_minute = alarm_time()
     hour = now.hour
     minute = now.minute
 
-    if (hour == config.ALARM_HOUR and
-        minute == config.ALARM_MINUTE and
-        _last_alarm_day != now.day):
+    if (hour == alarm_hour and
+        minute == alarm_minute and
+        _last_alarm_day != now.date()):
 
-        _last_alarm_day = now.day
-        wake_item = get_today_wake_item()
+        _last_alarm_day = now.date()
+        wake_item = get_today_wake_item(now.date())
         return True, wake_item
 
     return False, None

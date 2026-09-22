@@ -1,144 +1,105 @@
 #!/usr/bin/env python3
-from scheduler import check_alarm, get_greeting, get_today_wake_item
-from lcd import lcd_show, lcd_set_backlight
-from audio import AudioPlayer
-from servo_control import start_servo_waving, stop_servo_waving
-from button import init_button
-from datetime import datetime, date
-import config
+"""Clock runtime. Importing this module never initializes hardware."""
+from datetime import datetime
+import importlib
+import queue
+import signal
 import time
-from log import log
-from watchdog import Watchdog
+import config
+from audio import AudioPlayer
+from controller import ClockController
+from lighting import EffectSelector, WLEDManager, load_effects
+from scheduler import get_greeting
 from util import scrolling_text
 
-# ---------------------------------------
-# Globale Zustände
-# ---------------------------------------
 
-# Spezialanzeige (Countdown / Manual / Schnee)
-special = {
-    "mode": None,         # "manual", "countdown", "snow"
-    "text": "",
-    "end": 0,
-    "snow_offset": 0
-}
+def main():
+    from lcd import lcd_show, lcd_set_backlight, lcd_close
 
-player = AudioPlayer()
-wd = Watchdog(audio_player_ref=player, button_ref=None, special_ref=special)
+    events = queue.Queue(maxsize=128)
 
-alarm_active = False
+    def emit(event, value=None):
+        try:
+            events.put_nowait((event, value))
+        except queue.Full:
+            print('Eingabepuffer voll', flush=True)
 
-# -----------------------------
-# Button-Aktionen
-# -----------------------------
+    player = AudioPlayer()
+    wled = WLEDManager(report=lambda message: print(message, flush=True))
+    inputs = []
+    running = True
 
-def single_click():
-    wd.notify_button_event()
-    log("Schalte Backlight um")
-    lcd_set_backlight(toggle=True)
+    def shutdown(signum, frame):
+        nonlocal running
+        running = False
 
-
-def double_click():
-    wd.notify_button_event()
-
-    wake_item = get_today_wake_item()
-    log("[Button] Doppelklick → spiele Lied:", wake_item["file"])
-
+    signal.signal(signal.SIGTERM, shutdown)
+    signal.signal(signal.SIGINT, shutdown)
     try:
-        player.play(wake_item["file"])
-    except Exception as e:
-        log("[Button] Fehler beim Starten des Liedes:", e)
-
-    # Spezialmodus anzeigen
-    special["text"] = wake_item["message"]
-    special["mode"] = "manual"
-    special["end"] = time.time() + 5
-
-
-def triple_click():
-    wd.notify_button_event()
-
-    today = date.today()
-    year = today.year
-    dec24 = date(year, 12, 24)
-
-    if today <= dec24:
-        days = (dec24 - today).days
-    else:
-        dec24_next = date(year + 1, 12, 24)
-        days = (dec24_next - today).days
-
-    if days == 0:
-        msg = "Heute ist 24.12!"
-    elif days == 1:
-        msg = "Noch 1 Tag bis 24.12."
-    else:
-        msg = f"Noch {days} Tage"
-
-    log("[Button] Triple-Klick → Countdown:", msg)
-
-    special["text"] = msg
-    special["mode"] = "countdown"
-    special["end"] = time.time() + 5
-    special["snow_offset"] = 0
-
-
-# Button initialisieren
-button = init_button(single_click, double_click, triple_click)
-
-# -----------------------------
-# Hauptschleife
-# -----------------------------
-while True:
-    #wd.beat()  # Watchdog-Herzschlag
-    now = datetime.now()
-
-    # Alarm prüfen
-    alarm_state, wake_item = check_alarm(now)
-
-    if alarm_state and not alarm_active:
-        alarm_active = True
-        player.play(wake_item["file"])
-        start_servo_waving()
-
-    elif not alarm_state and alarm_active:
-        alarm_active = False
-        player.stop()
-        stop_servo_waving()
-
-    # -----------------------------
-    # Display-Steuerung mit Spezialmodus
-    # -----------------------------
-    mode = special["mode"]
-    display_text = None
-
-    if mode == "manual":
-        display_text = special["text"]
-        if time.time() > special["end"]:
-            special["mode"] = None
-
-    elif mode == "countdown":
-        display_text = special["text"]
-        if time.time() > special["end"]:
-            special["mode"] = "snow"
-            special["end"] = time.time() + 15
-
-    elif mode == "snow":
-        pattern = "*   *   *   *   *   "
-        display_text = scrolling_text(pattern, config.LCD_COLS, special["snow_offset"])
-        special["snow_offset"] += 1
-
-        if time.time() > special["end"]:
-            special["mode"] = None
-
-    # Normaler Modus, wenn kein Spezialmodus aktiv
-    if display_text is None:
-        if alarm_active:
-            display_text = wake_item["message"]
-        else:
+        controller = ClockController(player, EffectSelector(load_effects(config.EFFECT_LIBRARY), wled.send))
+        if config.INPUT_MODULE:
+            try:
+                adapter = importlib.import_module(config.INPUT_MODULE)
+                inputs.append(adapter.open_controls(emit))
+            except (ImportError, OSError) as error:
+                print(f'Eingabemodul {config.INPUT_MODULE} nicht verfügbar: {error}. '
+                      'Wecker läuft ohne Tastenfeld/Drehencoder weiter. '
+                      'I2C-Verkabelung/Adressen pruefen oder INPUT_MODULE=None setzen.',
+                      flush=True)
+        elif config.LEGACY_BUTTON_ENABLED:
+            try:
+                from button import init_button
+                inputs.append(init_button(lambda: emit('legacy_press'),
+                                          lambda: emit('play_today'),
+                                          lambda: emit('right_press')))
+            except (ImportError, OSError) as error:
+                print(f'GPIO-Taster an GPIO{config.BUTTON_PIN} nicht verfügbar: {error}. '
+                      'Wecker läuft ohne diesen Taster weiter. '
+                      'GPIO-Treiber prüfen oder LEGACY_BUTTON_ENABLED=False setzen.',
+                      flush=True)
+        previous_text, scroll_start = None, time.monotonic()
+        while running:
+            now, monotonic = datetime.now(), time.monotonic()
+            controller.tick(now, monotonic)
+            for _ in range(128):
+                try:
+                    event, value = events.get_nowait()
+                except queue.Empty:
+                    break
+                if config.DEBUG and event != 'error':
+                    print(f'[Event] {event} {value!r}', flush=True)
+                try:
+                    if event == 'legacy_press':
+                        if controller.active_item:
+                            controller.handle('right_press', None, monotonic)
+                        else:
+                            lcd_set_backlight(toggle=True)
+                    elif event == 'error':
+                        print(value, flush=True)
+                        controller.notice = str(value)
+                        controller.notice_end = monotonic + 5
+                    else:
+                        controller.handle(event, value, monotonic)
+                except (OSError, ValueError) as error:
+                    print(f'Eingabefehler: {error}', flush=True)
+                    controller.notice = 'Bedienfehler'
+                    controller.notice_end = monotonic + 5
             greeting = get_greeting(now)
-            display_text = greeting["text"]
+            force = bool(controller.active_item and config.ALARM_BACKLIGHT)
+            lcd_set_backlight(state=True if force else greeting['backlight'], force=force)
+            text = controller.message(monotonic, greeting['text'])
+            if text != previous_text:
+                previous_text, scroll_start = text, monotonic
+            lcd_show(now, scrolling_text(text, config.LCD_COLS,
+                                        int((monotonic - scroll_start) / 0.4)))
+            time.sleep(0.02)
+    finally:
+        for device in inputs:
+            device.close()
+        player.stop()
+        wled.close()
+        lcd_close()
 
-    lcd_show(now, display_text)
 
-    time.sleep(0.1)
+if __name__ == '__main__':
+    main()
