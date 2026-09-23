@@ -95,7 +95,7 @@ class ControlsMCPTests(unittest.TestCase):
         self.assertTrue(ready.wait(2))
         self.assertIn(('key', '1'), events)
 
-    def test_right_button_press_is_debounced(self):
+    def test_right_short_press_is_debounced_and_emitted_on_release(self):
         events, ready = [], threading.Event()
 
         def emit(event, value=None):
@@ -106,8 +106,31 @@ class ControlsMCPTests(unittest.TestCase):
         self.open(emit)
         # Pull the right button (PA2, bit 2) low and hold it past the debounce window.
         self.bus.set_mcp_gpio(self.mcp_address, 0xFFFF & ~(1 << 2))
+        time.sleep(controls_mcp.BUTTON_DEBOUNCE * 3)
+        # Der kurze Druck darf erst beim Loslassen melden, sonst waere er vom
+        # langen Druck nicht zu unterscheiden.
+        self.assertFalse(ready.is_set())
+        self.bus.set_mcp_gpio(self.mcp_address, 0xFFFF)
         self.assertTrue(ready.wait(2))
         self.assertEqual(events.count(('right_press', None)), 1)
+        self.assertNotIn(('right_hold', None), events)
+
+    def test_right_long_press_emits_hold_and_no_press(self):
+        events, ready = [], threading.Event()
+
+        def emit(event, value=None):
+            events.append((event, value))
+            if event == 'right_hold':
+                ready.set()
+
+        with patch('controls_mcp.config.BUTTON_HOLD_SECONDS', 0.1):
+            self.open(emit)
+            self.bus.set_mcp_gpio(self.mcp_address, 0xFFFF & ~(1 << 2))
+            self.assertTrue(ready.wait(2))
+            self.bus.set_mcp_gpio(self.mcp_address, 0xFFFF)
+            time.sleep(0.2)
+        self.assertEqual(events.count(('right_hold', None)), 1)
+        self.assertNotIn(('right_press', None), events)
 
     def test_i2c_error_is_reported_without_crashing_the_thread(self):
         events, ready = [], threading.Event()

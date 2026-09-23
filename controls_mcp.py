@@ -51,6 +51,8 @@ class _QuadDecoder:
 
 
 class _DebouncedButton:
+    """Entprellter Taster; meldet 'press'/'release', sonst None (aktiv low)."""
+
     def __init__(self, initial_high):
         self.stable = self.candidate = initial_high
         self.changed_at = time.monotonic()
@@ -60,8 +62,8 @@ class _DebouncedButton:
             self.candidate, self.changed_at = is_high, now
         if self.candidate != self.stable and now - self.changed_at >= BUTTON_DEBOUNCE:
             self.stable = self.candidate
-            return not self.stable  # active low: pressed when pulled to GND
-        return False
+            return 'release' if self.stable else 'press'  # gedrueckt = auf GND gezogen
+        return None
 
 
 class MCPControls:
@@ -81,6 +83,8 @@ class MCPControls:
         self.right_decoder = _QuadDecoder(self._encoder_state(gpio, RIGHT))
         self.left_button = _DebouncedButton(bool((gpio >> LEFT['button']) & 1))
         self.right_button = _DebouncedButton(bool((gpio >> RIGHT['button']) & 1))
+        self.right_pressed_at = None
+        self.right_hold_fired = False
         self.candidate_key = self.stable_key = None
         self.key_changed_at = time.monotonic()
 
@@ -132,13 +136,28 @@ class MCPControls:
             self._debug(f'Drehknopf rechts: {right_delta:+d}')
             self.emit('right_rotate', right_delta)
 
-        if self.left_button.update(bool((gpio >> LEFT['button']) & 1), now):
+        # Links hat keine Halte-Funktion und loest deshalb sofort beim Druck aus.
+        if self.left_button.update(bool((gpio >> LEFT['button']) & 1), now) == 'press':
             self._debug('Taster links gedrueckt')
             self.emit('left_press')
 
-        if self.right_button.update(bool((gpio >> RIGHT['button']) & 1), now):
-            self._debug('Taster rechts gedrueckt')
-            self.emit('right_press')
+        self._poll_right_button(bool((gpio >> RIGHT['button']) & 1), now)
+
+    def _poll_right_button(self, is_high, now):
+        """Kurz = right_press (beim Loslassen), lang = right_hold (nach Ablauf)."""
+        event = self.right_button.update(is_high, now)
+        if event == 'press':
+            self.right_pressed_at, self.right_hold_fired = now, False
+        elif event == 'release':
+            if not self.right_hold_fired:
+                self._debug('Taster rechts gedrueckt')
+                self.emit('right_press')
+            self.right_pressed_at = None
+        if (self.right_pressed_at is not None and not self.right_hold_fired
+                and now - self.right_pressed_at >= config.BUTTON_HOLD_SECONDS):
+            self.right_hold_fired = True
+            self._debug('Taster rechts gehalten')
+            self.emit('right_hold')
 
     def _poll_keypad(self):
         key = self._scan_keypad()

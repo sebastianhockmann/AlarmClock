@@ -44,10 +44,15 @@ def lcd_show(now, text):
             _last_lines[row] = line
 
 
-def lcd_set_backlight(toggle=False, state=None, force=False):
+def lcd_set_backlight(toggle=False, state=None, force=False, reset=False):
     global _backlight_manual, _backlight_state
 
-    if toggle:
+    if reset:
+        # Manuelle Uebersteuerung aufheben: ab jetzt entscheiden wieder die
+        # Greeting-Zeiten aus config.GREETINGS ueber das Backlight.
+        _backlight_manual = False
+        _backlight_state = True
+    elif toggle:
         _backlight_manual = True
         _backlight_state = not _backlight_state
     elif state is not None:
