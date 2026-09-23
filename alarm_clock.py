@@ -7,6 +7,7 @@ import signal
 import time
 import config
 from audio import AudioPlayer
+import chime
 from controller import ClockController
 from lighting import (EffectBrowser, EffectSelector, WLEDManager, browser_entries,
                       load_effects)
@@ -74,6 +75,8 @@ def main():
                     break
                 if config.DEBUG and event != 'error':
                     print(f'[Event] {event} {value!r}', flush=True)
+                if event == 'key':
+                    chime.play_click()
                 try:
                     if event == 'legacy_press':
                         if controller.active_item:

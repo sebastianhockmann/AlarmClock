@@ -4,8 +4,10 @@ from pathlib import Path
 import tempfile
 import unittest
 from unittest.mock import Mock, patch
+import chime
 import config
 import scheduler
+import smart_home
 from audio import AudioPlayer
 from controller import ClockController
 from lighting import (EffectBrowser, EffectSelector, WLEDClient, WLEDManager,
@@ -179,6 +181,64 @@ class ClockTests(unittest.TestCase):
         browser.set_power.assert_called_once_with(True)
         backlight.assert_called_once_with(reset=True)
         self.assertEqual(clock.notice, 'Alles normal')
+
+    def test_key_press_selects_effect_by_default(self):
+        lights = Mock()
+        lights.select.return_value = 'Solid'
+        clock = ClockController(Mock(), lights)
+        clock.handle('key', '1', 0)
+        lights.select.assert_called_once_with('key', '1')
+        self.assertEqual(clock.notice, 'Solid')
+
+    def test_key_press_on_smart_home_key_skips_lights(self):
+        lights = Mock()
+        trigger = Mock(return_value='Deckenlampe')
+        clock = ClockController(Mock(), lights, smart_home_trigger=trigger)
+        with patch.dict(config.SMART_HOME_ACTIONS, {'A': {'label': 'Deckenlampe',
+                                                           'service': 'light.toggle',
+                                                           'entity_id': 'light.deckenlampe'}}):
+            clock.handle('key', 'A', 0)
+        trigger.assert_called_once_with(config.SMART_HOME_ACTIONS['A'])
+        lights.select.assert_not_called()
+        self.assertEqual(clock.notice, 'Deckenlampe')
+
+    def test_smart_home_trigger_is_a_no_op_without_home_assistant_url(self):
+        with patch('smart_home.config.HOME_ASSISTANT_URL', ''), \
+             patch('smart_home.urlopen') as open_url:
+            label = smart_home.trigger({'label': 'Deckenlampe', 'service': 'light.toggle',
+                                        'entity_id': 'light.deckenlampe'})
+            self.assertEqual(label, 'Deckenlampe')
+            open_url.assert_not_called()
+
+    def test_smart_home_trigger_calls_home_assistant_when_configured(self):
+        import threading
+        called = threading.Event()
+
+        def response(*args, **kwargs):
+            called.set()
+            return Mock(__enter__=Mock(return_value=Mock()), __exit__=Mock(return_value=False))
+
+        with patch('smart_home.config.HOME_ASSISTANT_URL', 'http://ha.local:8123'), \
+             patch('smart_home.config.HOME_ASSISTANT_TOKEN', 'secret'), \
+             patch('smart_home.urlopen', side_effect=response) as open_url:
+            smart_home.trigger({'label': 'Deckenlampe', 'service': 'light.toggle',
+                                'entity_id': 'light.deckenlampe'})
+            self.assertTrue(called.wait(2))
+            request = open_url.call_args.args[0]
+            self.assertEqual(request.full_url, 'http://ha.local:8123/api/services/light/toggle')
+            self.assertEqual(json.loads(request.data), {'entity_id': 'light.deckenlampe'})
+            self.assertEqual(request.headers['Authorization'], 'Bearer secret')
+
+    def test_chime_plays_click_via_aplay_without_touching_the_main_player(self):
+        with patch('chime.subprocess.Popen') as spawn:
+            chime.play_click()
+            args = spawn.call_args.args[0]
+            self.assertEqual(args[0], 'aplay')
+            self.assertIn(str(chime.CLICK_SOUND), args)
+
+    def test_chime_ignores_a_busy_audio_device(self):
+        with patch('chime.subprocess.Popen', side_effect=OSError('busy')):
+            chime.play_click()  # muss nicht werfen
 
     def test_duplicate_effect_key_rejected(self):
         with tempfile.TemporaryDirectory() as directory:

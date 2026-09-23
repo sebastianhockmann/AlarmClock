@@ -162,4 +162,23 @@ KEYPAD_ADDRESS = 0x20
 # emit("left_rotate", signed_steps), emit("left_press"), emit("key", "1")
 # emit("right_rotate", signed_steps), emit("right_press"), emit("right_hold")
 INPUT_MODULE = "controls_mcp"
+
+# =========================
+# Smart Home (Home Assistant) fuer die Tasten A/B/C
+# =========================
+# Leer = Integration noch nicht angebunden; die Tasten werden dann nur
+# geloggt (siehe smart_home.py). Sobald Home Assistant erreichbar ist, hier
+# URL und ein Long-Lived Access Token eintragen.
+HOME_ASSISTANT_URL = ""  # z.B. "http://homeassistant.local:8123"
+HOME_ASSISTANT_TOKEN = ""
+
+# Tasten, die statt eines Lichteffekts eine Home-Assistant-Aktion ausloesen
+# (service als "domain.service", siehe HA-Doku zu /api/services). Passt die
+# entity_id an eure HA-Instanz an; Deckenlampe und Alexa-Routinen sind
+# Platzhalter, die sich rein per Config umbenennen/umbiegen lassen.
+SMART_HOME_ACTIONS = {
+    "A": {"label": "Deckenlampe", "service": "light.toggle", "entity_id": "light.deckenlampe"},
+    "B": {"label": "Alexa Routine 1", "service": "script.turn_on", "entity_id": "script.alexa_routine_1"},
+    "C": {"label": "Alexa Routine 2", "service": "script.turn_on", "entity_id": "script.alexa_routine_2"},
+}
 LEGACY_BUTTON_ENABLED = False

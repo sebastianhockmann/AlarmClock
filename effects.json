@@ -9,9 +9,9 @@
   {"id": "candle", "name": "Candle", "key": "7", "state": {"on": true, "bri": 140, "seg": [{"id": 0, "fx": 88, "col": [[255, 140, 20]]}]}},
   {"id": "fire_2012", "name": "Fire 2012", "key": "8", "state": {"on": true, "bri": 180, "seg": [{"id": 0, "fx": 66}]}},
   {"id": "twinklefox", "name": "Twinklefox", "key": "9", "state": {"on": true, "bri": 160, "seg": [{"id": 0, "fx": 80, "col": [[120, 160, 255]]}]}},
-  {"id": "aurora", "name": "Aurora", "key": "A", "state": {"on": true, "bri": 180, "seg": [{"id": 0, "fx": 38}]}},
-  {"id": "fireworks", "name": "Fireworks", "key": "B", "state": {"on": true, "bri": 200, "seg": [{"id": 0, "fx": 42}]}},
-  {"id": "lightning", "name": "Lightning", "key": "C", "state": {"on": true, "bri": 200, "seg": [{"id": 0, "fx": 57}]}},
+  {"id": "aurora", "name": "Aurora", "state": {"on": true, "bri": 180, "seg": [{"id": 0, "fx": 38}]}},
+  {"id": "fireworks", "name": "Fireworks", "state": {"on": true, "bri": 200, "seg": [{"id": 0, "fx": 42}]}},
+  {"id": "lightning", "name": "Lightning", "state": {"on": true, "bri": 200, "seg": [{"id": 0, "fx": 57}]}},
   {"id": "plasma", "name": "Plasma", "state": {"on": true, "bri": 180, "seg": [{"id": 0, "fx": 97}]}},
   {"id": "sunrise", "name": "Sunrise", "key": "*", "state": {"on": true, "bri": 200, "seg": [{"id": 0, "fx": 104}]}},
   {"id": "pacifica", "name": "Pacifica", "key": "#", "state": {"on": true, "bri": 160, "seg": [{"id": 0, "fx": 101}]}}

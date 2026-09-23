@@ -1,10 +1,11 @@
 """Hardware-independent alarm lifetime and input handling."""
 import config
+import smart_home
 from scheduler import check_alarm, get_today_wake_item
 
 
 class ClockController:
-    def __init__(self, player, lights, browser=None, backlight=None):
+    def __init__(self, player, lights, browser=None, backlight=None, smart_home_trigger=None):
         self.player = player
         self.lights = lights
         # Ohne Browser bleibt der linke Knopf bei der kuratierten Bibliothek
@@ -12,6 +13,7 @@ class ClockController:
         # auch ohne erreichbares WLED-Geraet bedienbar weiter.
         self.browser = browser
         self.backlight = backlight or (lambda **kwargs: None)
+        self.smart_home_trigger = smart_home_trigger or smart_home.trigger
         self.active_item = None
         self.alarm_end = 0
         self.notice = ''
@@ -53,8 +55,14 @@ class ClockController:
                            else self.browser.toggle_power())
             self._debug(f'Licht: {self.notice}')
         elif event == 'key':
-            self.notice = self.lights.select('key', str(value))
-            self._debug(f'Taste {value} -> Effekt gesendet: {self.notice}')
+            key = str(value)
+            action = config.SMART_HOME_ACTIONS.get(key)
+            if action is not None:
+                self.notice = self.smart_home_trigger(action)
+                self._debug(f'Taste {key} -> Smart Home: {self.notice}')
+            else:
+                self.notice = self.lights.select('key', key)
+                self._debug(f'Taste {key} -> Effekt gesendet: {self.notice}')
         elif event == 'right_press':
             self.notice = self._toggle_audio()
         elif event == 'right_hold':

@@ -138,7 +138,8 @@ Preset 1 muss am WLED-Gerät selbst eingerichtet werden. Die Bibliothek wird bei
 Start gelesen. Effekte beziehen sich im Warmweiss-Beispiel auf Segment 0.
 
 Jedes Bedienelement hat genau einen Zuständigkeitsbereich: der linke Drehknopf
-das Licht, der rechte den Ton, das Tastenfeld die kuratierten Lieblingseffekte.
+das Licht, der rechte den Ton, das Tastenfeld die kuratierten Lieblingseffekte
+und (Tasten A/B/C) Smart-Home-Kurzbefehle.
 
 - **Links drehen – Licht wählen.** Blättert durch *alle* Effekte des WLED-Geräts
   und schaltet den Streifen sofort um (Live-Vorschau, kein Bestätigen nötig).
@@ -148,6 +149,14 @@ das Licht, der rechte den Ton, das Tastenfeld die kuratierten Lieblingseffekte.
   drehen sucht grob, langsam drehen wählt genau.
 - **Links drücken – Streifen an/aus.**
 - **Tastenfeld:** Eintrag aus `effects.json` über seine `key` direkt aktivieren.
+  Jeder Tastendruck gibt zusätzlich einen kurzen Klick aus (`chime.py`, per
+  `aplay` unabhängig vom laufenden Alarm/Musik-Ton). Die Tasten `A`/`B`/`C`
+  sind keine Lichteffekte mehr, sondern lösen über `config.SMART_HOME_ACTIONS`
+  eine Home-Assistant-Aktion aus (Deckenlampe, zwei Alexa-Routinen) – die
+  Effekte Aurora/Fireworks/Lightning bleiben über den linken Drehknopf
+  erreichbar. Ohne gesetzte `config.HOME_ASSISTANT_URL` wird die Aktion nur
+  geloggt; die eigentliche Anbindung (Home Assistant vs. Fauxmo) steht noch
+  aus, siehe `smart_home.py`.
 - **Rechts drehen – Lautstärke** in Schritten von `config.VOLUME_STEP` (Standard 5 %).
 - **Rechts kurz drücken – Ton an/aus.** Läuft ein Alarm, stoppt er. Läuft Musik,
   stoppt sie. Sonst startet das Tageslied. Der kurze Druck meldet beim Loslassen,
