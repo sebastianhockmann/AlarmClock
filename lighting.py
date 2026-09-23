@@ -3,6 +3,7 @@ import json
 import logging
 import queue
 import threading
+import time
 from urllib.request import Request, urlopen
 from urllib.error import HTTPError, URLError
 import config
@@ -59,6 +60,100 @@ class EffectSelector:
                 self.index = index
                 return self.confirm()
         raise ValueError(f'Unknown effect {field}: {value}')
+
+
+def browser_entries(effects):
+    """(fx, Name) aus der kuratierten Bibliothek: Ersatzliste ohne Geraetekontakt."""
+    entries = []
+    for effect in effects:
+        segments = effect['state'].get('seg')
+        if isinstance(segments, list) and segments and isinstance(segments[0], dict):
+            fx = segments[0].get('fx')
+            known = [value for value, _ in entries]
+            if isinstance(fx, int) and not isinstance(fx, bool) and fx not in known:
+                entries.append((fx, effect['name']))
+    return entries or [(0, 'Solid')]
+
+
+class EffectBrowser:
+    """Linker Drehknopf: die komplette WLED-Effektliste mit Live-Vorschau.
+
+    Jeder Drehschritt schaltet den Streifen sofort um; es gibt kein
+    Bestaetigen. Das vertraegt sich mit der Queue in WLEDManager.send(),
+    die alte Befehle verwirft, statt schnelles Drehen aufzustauen.
+    Die Namen holt refresh() im Hintergrund vom Geraet (/json -> "effects");
+    bis dahin dient die kuratierte Bibliothek als Ersatzliste.
+    """
+
+    def __init__(self, send, status=None, fallback=(), fast_seconds=None, fast_steps=None):
+        self.send = send
+        self.status = status
+        self.entries = list(fallback) or [(0, 'Solid')]
+        self.live = False
+        self.index = 0
+        self.power = True
+        self.last_rotate = 0.0
+        self.fast_seconds = config.EFFECT_FAST_SECONDS if fast_seconds is None else fast_seconds
+        self.fast_steps = config.EFFECT_FAST_STEPS if fast_steps is None else fast_steps
+        self._lock = threading.Lock()
+        self._thread = None
+
+    def refresh(self):
+        """Effektliste und Zustand einmal beim Geraet abfragen, ohne zu blockieren."""
+        if self.status is None:
+            return
+        with self._lock:
+            if self._thread is not None and self._thread.is_alive():
+                return
+            self._thread = threading.Thread(target=self._load, daemon=True)
+            self._thread.start()
+
+    def _load(self):
+        status = self.status()
+        if not isinstance(status, dict):
+            return
+        effects = status.get('effects')
+        if not isinstance(effects, list) or not effects:
+            return
+        state = status.get('state')
+        state = state if isinstance(state, dict) else {}
+        segments = state.get('seg')
+        current = (segments[0].get('fx') if isinstance(segments, list) and segments
+                   and isinstance(segments[0], dict) else None)
+        # Erst die Liste tauschen, dann den Index: ein gleichzeitiges rotate()
+        # arbeitet so nie auf einem Index ausserhalb der Liste.
+        self.entries = [(fx, str(name)) for fx, name in enumerate(effects)]
+        self.live = True
+        if isinstance(current, int) and not isinstance(current, bool) and 0 <= current < len(effects):
+            self.index = current
+        if isinstance(state.get('on'), bool):
+            self.power = state['on']
+
+    def rotate(self, steps, now=None):
+        """Einen Schritt weiter und sofort senden; schnelles Drehen springt weiter."""
+        now = time.monotonic() if now is None else now
+        if not self.live:
+            self.refresh()
+        if 0 < now - self.last_rotate < self.fast_seconds:
+            steps *= self.fast_steps
+        self.last_rotate = now
+        entries = self.entries
+        self.index = (self.index + steps) % len(entries)
+        fx, name = entries[self.index]
+        self.power = True
+        # Ohne "bri": die am Geraet eingestellte Helligkeit bleibt erhalten.
+        self.send({'on': True, 'seg': [{'id': 0, 'fx': fx}]})
+        return f'{self.index + 1}/{len(entries)} {name}'
+
+    def toggle_power(self):
+        self.power = not self.power
+        self.send({'on': self.power})
+        return 'Licht an' if self.power else 'Licht aus'
+
+    def set_power(self, on):
+        self.power = bool(on)
+        self.send({'on': self.power})
+        return 'Licht an' if self.power else 'Licht aus'
 
 
 class WLEDManager:

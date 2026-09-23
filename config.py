@@ -129,6 +129,21 @@ WAKE_ITEMS = [
     ])
 ]
 
+# =========================
+# Bedienung: linker Drehknopf (Licht), rechter Drehknopf (Ton)
+# =========================
+# Der linke Drehknopf blaettert mit Live-Vorschau durch ALLE Effekte des
+# WLED-Geraets, nicht nur durch die kuratierte Liste in effects.json.
+# Damit ~180 Effekte mit einem Rastencoder erreichbar bleiben, springt
+# schnelles Drehen weiter: liegen zwei Schritte weniger als
+# EFFECT_FAST_SECONDS auseinander, zaehlt ein Schritt EFFECT_FAST_STEPS-fach.
+EFFECT_FAST_SECONDS = 0.15
+EFFECT_FAST_STEPS = 10
+
+# Der rechte Taster meldet den kurzen Druck erst beim Loslassen, damit er vom
+# langen Druck unterscheidbar ist. So lange gedrueckt halten fuer "Alles normal":
+BUTTON_HOLD_SECONDS = 2.0
+
 # WLED communicates over HTTP/Wi-Fi, local peripherals over I2C.
 EFFECT_LIBRARY = BASE_DIR / "effects.json"
 ALARM_EFFECT = None  # library ID, e.g. "warm" or "music"
@@ -145,6 +160,6 @@ KEYPAD_ADDRESS = 0x20
 
 # Optional I2C adapter module: open_controls(emit) -> object with close().
 # emit("left_rotate", signed_steps), emit("left_press"), emit("key", "1")
-# emit("right_rotate", signed_steps), emit("right_press")
+# emit("right_rotate", signed_steps), emit("right_press"), emit("right_hold")
 INPUT_MODULE = "controls_mcp"
 LEGACY_BUTTON_ENABLED = False

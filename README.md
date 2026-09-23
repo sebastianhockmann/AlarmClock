@@ -137,11 +137,30 @@ Kompatibilitätsadapter bestehen und hat keine eigene HTTP-Implementierung.
 Preset 1 muss am WLED-Gerät selbst eingerichtet werden. Die Bibliothek wird beim
 Start gelesen. Effekte beziehen sich im Warmweiss-Beispiel auf Segment 0.
 
-- Links drehen: Eintrag auswählen und Namen am LCD anzeigen.
-- Links drücken: ausgewählten Effekt senden.
-- Tastenfeld: Eintrag über seine `key` direkt aktivieren.
-- Rechts drücken: laufende Audioausgabe/Alarm stoppen (vorläufige Belegung).
-- Rechts drehen: Lautstärke in Schritten von `config.VOLUME_STEP` (Standard 5 %) ändern.
+Jedes Bedienelement hat genau einen Zuständigkeitsbereich: der linke Drehknopf
+das Licht, der rechte den Ton, das Tastenfeld die kuratierten Lieblingseffekte.
+
+- **Links drehen – Licht wählen.** Blättert durch *alle* Effekte des WLED-Geräts
+  und schaltet den Streifen sofort um (Live-Vorschau, kein Bestätigen nötig).
+  Das LCD zeigt `12/187 Aurora`. Zwei Drehschritte innerhalb von
+  `config.EFFECT_FAST_SECONDS` springen um `config.EFFECT_FAST_STEPS` Einträge,
+  damit auch ~180 Effekte mit einem Rastencoder erreichbar bleiben: schnell
+  drehen sucht grob, langsam drehen wählt genau.
+- **Links drücken – Streifen an/aus.**
+- **Tastenfeld:** Eintrag aus `effects.json` über seine `key` direkt aktivieren.
+- **Rechts drehen – Lautstärke** in Schritten von `config.VOLUME_STEP` (Standard 5 %).
+- **Rechts kurz drücken – Ton an/aus.** Läuft ein Alarm, stoppt er. Läuft Musik,
+  stoppt sie. Sonst startet das Tageslied. Der kurze Druck meldet beim Loslassen,
+  damit er vom langen unterscheidbar ist.
+- **Rechts lang drücken (`config.BUTTON_HOLD_SECONDS`, Standard 2 s) – „Alles
+  normal".** Musik aus, Licht an, Display zurück auf die automatische Steuerung
+  über `config.GREETINGS`. Die Fluchttaste, wenn man sich verklickt hat.
+
+Die Effektnamen für den linken Knopf holt `EffectBrowser.refresh()` beim Start
+in einem Hintergrund-Thread vom Gerät (`/json` → `effects`); die Hauptschleife
+blockiert dabei nie. Antwortet das Gerät nicht, dient die kuratierte Liste aus
+`effects.json` als Ersatz – Einträge ohne `seg[0].fx` (z. B. „Licht aus") können
+dann nicht vorgeschaut werden und fehlen in dieser Ersatzliste.
 
 WLED-Anfragen laufen in einem eigenen Thread mit Timeout. Bei vielen Befehlen
 bleibt nur der neueste noch nicht gesendete Zustand in der Warteschlange.
@@ -175,7 +194,7 @@ def open_controls(emit):
     # emit("left_rotate", +1) / emit("left_rotate", -1)
     # emit("left_press")
     # emit("key", "1")
-    # emit("right_press") / emit("right_rotate", +1)
+    # emit("right_press") / emit("right_hold") / emit("right_rotate", +1)
     # Objekt zurückgeben, dessen close() Threads und Buszugriff beendet.
     ...
 ```
@@ -193,7 +212,7 @@ verfolgen:
 
 - `[Event] key '3'` – vom Eingabemodul in die Warteschlange gelegtes Ereignis.
 - `[Eingabe] ...` – Rohereignisse aus `controls_mcp.py` (Tastendruck, Drehschritt).
-- `[Controller] ...` – daraus abgeleitete Aktion (Effekt-Vorschau/-Versand, Alarm gestoppt).
+- `[Controller] ...` – daraus abgeleitete Aktion (Effekt, Licht, Alarm gestoppt).
 - `[WLED] Sende an <host>: {...}` – tatsächlich an WLED geschicktes JSON.
 
 Bleibt bei Tastendruck z. B. nur `[Event]`/`[Eingabe]` sichtbar, aber kein

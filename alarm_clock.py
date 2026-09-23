@@ -8,7 +8,8 @@ import time
 import config
 from audio import AudioPlayer
 from controller import ClockController
-from lighting import EffectSelector, WLEDManager, load_effects
+from lighting import (EffectBrowser, EffectSelector, WLEDManager, browser_entries,
+                      load_effects)
 from scheduler import get_greeting
 from util import scrolling_text
 
@@ -36,7 +37,12 @@ def main():
     signal.signal(signal.SIGTERM, shutdown)
     signal.signal(signal.SIGINT, shutdown)
     try:
-        controller = ClockController(player, EffectSelector(load_effects(config.EFFECT_LIBRARY), wled.send))
+        effects = load_effects(config.EFFECT_LIBRARY)
+        # Linker Knopf: alle Effekte des Geraets. Tastenfeld: kuratierte Bibliothek.
+        browser = EffectBrowser(wled.send, wled.get_status, browser_entries(effects))
+        browser.refresh()
+        controller = ClockController(player, EffectSelector(effects, wled.send),
+                                     browser=browser, backlight=lcd_set_backlight)
         if config.INPUT_MODULE:
             try:
                 adapter = importlib.import_module(config.INPUT_MODULE)

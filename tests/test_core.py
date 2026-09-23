@@ -8,7 +8,8 @@ import config
 import scheduler
 from audio import AudioPlayer
 from controller import ClockController
-from lighting import EffectSelector, WLEDClient, WLEDManager, load_effects
+from lighting import (EffectBrowser, EffectSelector, WLEDClient, WLEDManager,
+                      browser_entries, load_effects)
 
 
 class ClockTests(unittest.TestCase):
@@ -99,6 +100,85 @@ class ClockTests(unittest.TestCase):
         self.assertEqual(selector.selected['id'], 'solid')
         with self.assertRaises(ValueError):
             selector.select('key', 'unknown')
+
+    def test_browser_previews_live_and_accelerates(self):
+        send = Mock()
+        entries = list(enumerate(['A', 'B', 'C', 'D', 'E']))
+        browser = EffectBrowser(send, None, entries, fast_seconds=0.1, fast_steps=3)
+        self.assertEqual(browser.rotate(1, 10.0), '2/5 B')
+        send.assert_called_once_with({'on': True, 'seg': [{'id': 0, 'fx': 1}]})
+        # Schnell nachgedreht: ein Rastschritt zaehlt dreifach.
+        self.assertEqual(browser.rotate(1, 10.05), '5/5 E')
+        # Langsam gedreht: wieder ein einzelner Schritt, mit Umlauf.
+        self.assertEqual(browser.rotate(1, 20.0), '1/5 A')
+
+    def test_browser_toggles_power_without_touching_brightness(self):
+        send = Mock()
+        browser = EffectBrowser(send, None, [(0, 'Solid')])
+        self.assertEqual(browser.toggle_power(), 'Licht aus')
+        send.assert_called_with({'on': False})
+        self.assertEqual(browser.toggle_power(), 'Licht an')
+        send.assert_called_with({'on': True})
+
+    def test_browser_adopts_the_full_effect_list_from_the_device(self):
+        status = Mock(return_value={'effects': ['Solid', 'Blink', 'Aurora'],
+                                    'state': {'on': False, 'seg': [{'fx': 2}]}})
+        browser = EffectBrowser(Mock(), status, [(0, 'Solid')])
+        browser.refresh()
+        browser._thread.join(2)
+        self.assertTrue(browser.live)
+        self.assertEqual(browser.entries, [(0, 'Solid'), (1, 'Blink'), (2, 'Aurora')])
+        self.assertEqual(browser.index, 2)
+        self.assertFalse(browser.power)
+
+    def test_browser_keeps_working_when_the_device_is_silent(self):
+        browser = EffectBrowser(Mock(), Mock(return_value=None), [(0, 'Solid'), (9, 'Rainbow')])
+        browser.refresh()
+        browser._thread.join(2)
+        self.assertFalse(browser.live)
+        self.assertEqual(browser.rotate(1, 1.0), '2/2 Rainbow')
+
+    def test_browser_fallback_entries_come_from_the_library(self):
+        entries = browser_entries(load_effects(config.EFFECT_LIBRARY))
+        self.assertIn((9, 'Rainbow'), entries)
+        # "Licht aus" hat keinen Effekt und taugt deshalb nicht zur Vorschau.
+        self.assertNotIn('Licht aus', [name for _, name in entries])
+        self.assertEqual(len(entries), len({fx for fx, _ in entries}))
+
+    def test_left_knob_previews_live_and_press_toggles_the_strip(self):
+        browser = Mock()
+        browser.rotate.return_value = '3/180 Aurora'
+        browser.toggle_power.return_value = 'Licht aus'
+        clock = ClockController(Mock(), Mock(), browser=browser)
+        clock.handle('left_rotate', 1, 5)
+        browser.rotate.assert_called_once_with(1, 5)
+        self.assertEqual(clock.notice, '3/180 Aurora')
+        clock.handle('left_press', None, 5)
+        browser.toggle_power.assert_called_once()
+        self.assertEqual(clock.notice, 'Licht aus')
+
+    def test_right_press_plays_and_stops_music_without_an_alarm(self):
+        player = Mock()
+        player.is_playing = False
+        clock = ClockController(player, Mock())
+        clock.handle('right_press', None, 0)
+        player.play.assert_called_once()
+        player.is_playing = True
+        clock.handle('right_press', None, 1)
+        player.stop.assert_called_once()
+        self.assertEqual(clock.notice, 'Musik gestoppt')
+
+    def test_right_hold_resets_music_light_and_backlight(self):
+        player, browser, backlight = Mock(), Mock(), Mock()
+        clock = ClockController(player, Mock(), browser=browser, backlight=backlight)
+        clock.tick(datetime(2026, 9, 13, 6, 15), 0)
+        self.assertIsNotNone(clock.active_item)
+        clock.handle('right_hold', None, 1)
+        self.assertIsNone(clock.active_item)
+        player.stop.assert_called()
+        browser.set_power.assert_called_once_with(True)
+        backlight.assert_called_once_with(reset=True)
+        self.assertEqual(clock.notice, 'Alles normal')
 
     def test_duplicate_effect_key_rejected(self):
         with tempfile.TemporaryDirectory() as directory:
