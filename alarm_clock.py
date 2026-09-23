@@ -74,6 +74,10 @@ def main():
                             controller.handle('right_press', None, monotonic)
                         else:
                             lcd_set_backlight(toggle=True)
+                    elif event == 'key' and value == 'D':
+                        lcd_set_backlight(toggle=True)
+                        controller.notice = 'Display An/Aus'
+                        controller.notice_end = monotonic + 3
                     elif event == 'error':
                         print(value, flush=True)
                         controller.notice = str(value)

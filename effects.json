@@ -12,7 +12,7 @@
   {"id": "aurora", "name": "Aurora", "key": "A", "state": {"on": true, "bri": 180, "seg": [{"id": 0, "fx": 38}]}},
   {"id": "fireworks", "name": "Fireworks", "key": "B", "state": {"on": true, "bri": 200, "seg": [{"id": 0, "fx": 42}]}},
   {"id": "lightning", "name": "Lightning", "key": "C", "state": {"on": true, "bri": 200, "seg": [{"id": 0, "fx": 57}]}},
-  {"id": "plasma", "name": "Plasma", "key": "D", "state": {"on": true, "bri": 180, "seg": [{"id": 0, "fx": 97}]}},
+  {"id": "plasma", "name": "Plasma", "state": {"on": true, "bri": 180, "seg": [{"id": 0, "fx": 97}]}},
   {"id": "sunrise", "name": "Sunrise", "key": "*", "state": {"on": true, "bri": 200, "seg": [{"id": 0, "fx": 104}]}},
   {"id": "pacifica", "name": "Pacifica", "key": "#", "state": {"on": true, "bri": 160, "seg": [{"id": 0, "fx": 101}]}}
 ]
