@@ -285,5 +285,13 @@ def alexa_devices():
     return jsonify(success=True, devices=devices)
 
 
+
+@app.route('/api/ha/alexa_devices')
+def ha_alexa_devices():
+    devices, problem = integrations.home_assistant_alexa_devices()
+    if devices is None:
+        return error(problem, 502)
+    return jsonify(success=True, devices=devices)
+
 if __name__ == '__main__':
     app.run(host=config.WEB_HOST, port=config.WEB_PORT, threaded=True)

@@ -11,10 +11,11 @@ import scheduler
 import settings
 from audio import AudioPlayer
 from controller import ClockController
-from lighting import EffectBrowser, WLEDManager, browser_entries, load_effects
+from lighting import EffectBrowser, WLEDManager, browser_entries, default_palette, load_effects
 from helpers import TempSettingsTestCase
 
 MONDAY_0615 = datetime(2026, 9, 28, 6, 15)
+ECHO = 'bff71067de175dbdf5c1836a959bf7e2'
 
 
 def player_mock():
@@ -79,6 +80,17 @@ class SchedulerTests(TempSettingsTestCase):
         music = settings.get('music')
         for entry in [{'file': music['default_song']}] + music['dates'] + music['rotation']:
             self.assertTrue((config.BASE_DIR / entry['file']).is_file(), entry['file'])
+
+    def test_alexa_song_rotates_daily_and_falls_back_to_mp3(self):
+        songs = settings.get('music')['alexa_songs']
+        first = scheduler.wake_item('alexa', date(2026, 9, 28))
+        second = scheduler.wake_item('alexa', date(2026, 9, 29))
+        self.assertIn(first['alexa'], [song['text'] for song in songs])
+        self.assertNotEqual(first['alexa'], second['alexa'])
+        music = settings.get('music')
+        music['alexa_songs'] = []
+        settings.save('music', music)
+        self.assertIsNone(scheduler.wake_item('alexa', date(2026, 9, 28)).get('alexa'))
 
     def test_random_song_comes_from_the_music_folder(self):
         item = scheduler.get_random_item(rng=random.Random(1))
@@ -273,6 +285,124 @@ class ControllerTests(TempSettingsTestCase):
         self.assertEqual(clock.status()['alarm'], 'Weck-Test')
 
 
+    def alexa_mock(self, device=ECHO):
+        alexa = Mock()
+        alexa.device.return_value = device
+        alexa.say.return_value = bool(device)
+        return alexa
+
+    def use_alexa_wake(self):
+        wake = settings.get('wake')
+        wake['music'] = 'alexa'
+        settings.save('wake', wake)
+
+    def said(self, alexa):
+        return [call.args[0] for call in alexa.say.call_args_list]
+
+    def test_alexa_wake_ramps_volume_in_steps_and_stops(self):
+        self.use_alexa_wake()
+        alexa = self.alexa_mock()
+        clock = self.make(alexa=alexa)
+        clock.tick(MONDAY_0615, 0)
+        song = scheduler.get_alexa_item(MONDAY_0615.date())['alexa']
+        self.assertEqual(self.said(alexa), ['Lautstärke 2', song])
+        self.player.play.assert_not_called()
+        clock.tick(MONDAY_0615, 30)   # 45 %
+        clock.tick(MONDAY_0615, 31)   # 45,8 % -> Stufe 5
+        clock.tick(MONDAY_0615, 60)   # 70 %
+        self.assertEqual(self.said(alexa)[2:], ['Lautstärke 4', 'Lautstärke 5', 'Lautstärke 7'])
+        clock.handle('right_press', None, 61)
+        self.assertEqual(self.said(alexa)[-1], 'Stopp')
+        self.assertFalse(clock.alarm_active)
+
+    def test_alexa_wake_snooze_stops_and_restarts_the_song(self):
+        self.use_alexa_wake()
+        alexa = self.alexa_mock()
+        clock = self.make(alexa=alexa)
+        clock.tick(MONDAY_0615, 0)
+        clock.handle('key', '5', 1)
+        self.assertEqual(self.said(alexa)[-1], 'Stopp')
+        clock.tick(MONDAY_0615, 1 + 9 * 60)
+        self.assertEqual(self.said(alexa)[-2:], ['Lautstärke 2', self.said(alexa)[1]])
+
+    def test_alexa_wake_falls_back_to_mp3(self):
+        self.use_alexa_wake()
+        clock = self.make(alexa=self.alexa_mock(device=''))
+        clock.tick(MONDAY_0615, 0)
+        self.player.play.assert_called_once()
+        # Echo eingestellt, aber Home Assistant antwortet nicht:
+        alexa = self.alexa_mock()
+        clock = self.make(alexa=alexa)
+        clock.tick(MONDAY_0615, 0)
+        self.player.play.assert_not_called()
+        alexa.say.call_args.kwargs['on_error']('Nicht erreichbar')
+        self.emit.assert_called_with('alexa_error', 'Nicht erreichbar')
+        clock.handle('alexa_error', 'Nicht erreichbar', 2)
+        self.player.play.assert_called_once()
+        self.assertEqual(clock.notice, 'Alexa Fehler: MP3')
+
+    def test_pressed_right_knob_sets_alexa_volume_after_a_pause(self):
+        alexa = self.alexa_mock()
+        clock = self.make(alexa=alexa)
+        clock.handle('right_press_rotate', 1, 0)
+        clock.handle('right_press_rotate', 1, 0.2)
+        self.assertEqual(clock.notice, 'Alexa Lautst. 6')
+        clock.tick(MONDAY_0615.replace(hour=12), 0.5)
+        alexa.say.assert_not_called()
+        clock.tick(MONDAY_0615.replace(hour=12), 1.1)
+        alexa.say.assert_called_once_with('Lautstärke 6')
+        self.player.set_volume.assert_not_called()
+        clock = self.make(alexa=self.alexa_mock(device=''))
+        clock.handle('right_press_rotate', 1, 0)
+        self.assertEqual(clock.notice, 'Alexa-Echo fehlt (Web)')
+
+    def test_left_knob_dims_the_lamp_after_a_lamp_key(self):
+        integration, browser, dimmer = Mock(return_value='Farbe Tiago'), Mock(), Mock()
+        dimmer.levels = {'light.h60a1': 51}
+        dimmer.set.side_effect = lambda entity, percent: dimmer.levels.update({entity: percent})
+        clock = self.make(integration=integration, browser=browser, dimmer=dimmer)
+        clock.run_action({'type': 'ha_color', 'entity_id': 'light.h60a1', 'colors': ['rot']})
+        dimmer.prefetch.assert_called_once_with('light.h60a1')
+        clock.handle('left_rotate', 1, 1)
+        self.assertEqual(clock.notice, 'Lampe 60%')
+        clock.handle('left_rotate', -1, 1.1)
+        clock.handle('left_rotate', -1, 1.2)
+        self.assertEqual(clock.notice, 'Lampe 40%')
+        self.assertEqual([c.args[1] for c in dimmer.set.call_args_list], [60, 50, 40])
+        browser.rotate.assert_not_called()
+        # 10 s ohne Drehen: der Knopf blaettert wieder durch die Effekte.
+        clock.tick(MONDAY_0615.replace(hour=12), 12)
+        clock.handle('left_rotate', 1, 12)
+        browser.rotate.assert_called_once()
+
+    def test_song_list_browses_with_the_right_knob(self):
+        clock = self.make()
+        files = scheduler.list_music()
+        clock.run_action({'type': 'songs', 'source': 'mp3'})
+        self.assertTrue(clock.notice.startswith(f'1/{len(files)} '))
+        clock.handle('right_rotate', 2, 1)
+        self.assertTrue(clock.notice.startswith(f'3/{len(files)} '))
+        self.player.set_volume.assert_not_called()
+        clock.handle('right_press', None, 2)
+        self.player.play.assert_called_once_with(files[2])
+        self.assertIsNone(clock.browse)
+        clock.handle('right_rotate', 1, 3)  # wieder Lautstaerke
+        self.player.set_volume.assert_called_once()
+
+    def test_alexa_song_list_times_out(self):
+        alexa = self.alexa_mock()
+        clock = self.make(alexa=alexa)
+        songs = settings.get('music')['alexa_songs']
+        clock.handle('action', {'type': 'songs', 'source': 'alexa'}, 0)
+        clock.handle('action', {'type': 'songs', 'source': 'alexa'}, 1)  # nochmal = weiter
+        self.assertTrue(clock.notice.startswith(f'2/{len(songs)} '))
+        clock.handle('right_press', None, 2)
+        alexa.say.assert_called_once_with(songs[1]['text'])
+        clock.run_action({'type': 'songs', 'source': 'alexa'})
+        clock.tick(MONDAY_0615.replace(hour=12), 2 + 11)
+        self.assertIsNone(clock.browse)
+
+
 class LightingTests(TempSettingsTestCase):
     def test_library_is_valid_and_feeds_the_fallback_browser_list(self):
         effects = load_effects(config.EFFECTS_FILE)
@@ -291,7 +421,7 @@ class LightingTests(TempSettingsTestCase):
         send = Mock()
         browser = EffectBrowser(send, None, list(enumerate('ABCDE')), fast_seconds=0.1, fast_steps=3)
         self.assertEqual(browser.rotate(1, 10.0), '2/5 B')
-        send.assert_called_once_with({'on': True, 'seg': [{'id': 0, 'fx': 1}]})
+        send.assert_called_once_with({'on': True, 'seg': [{'id': 0, 'fx': 1, 'fxdef': True, 'pal': 0}]})
         self.assertEqual(browser.rotate(1, 10.05), '5/5 E')
         self.assertEqual(browser.rotate(1, 20.0), '1/5 A')
 
@@ -310,6 +440,27 @@ class LightingTests(TempSettingsTestCase):
         self.assertEqual(browser.entries, [(0, 'Solid'), (1, 'Blink'), (2, 'Aurora')])
         self.assertEqual(browser.index, 2)
         self.assertFalse(browser.power)
+
+    def test_browser_resets_the_palette_to_the_effect_default(self):
+        # Sonst bleibt z. B. "Aurora" (gruen) fuer alle folgenden Effekte stehen.
+        self.assertEqual(default_palette('!,!;1,2,3;!;;sx=24,pal=50'), 50)
+        self.assertEqual(default_palette('!,Size;;!'), 0)
+        self.assertEqual(default_palette(''), 0)
+        send = Mock()
+        status = Mock(return_value={'effects': ['Solid', 'Rainbow', 'Aurora'], 'state': {}})
+        fxdata = Mock(return_value=['', '!,Size;;!', '!,!;1,2,3;!;;sx=24,pal=50'])
+        browser = EffectBrowser(send, status, [(0, 'Solid')], fxdata=fxdata)
+        browser.refresh()
+        browser._thread.join(2)
+        browser.rotate(2, 10.0)
+        self.assertEqual(send.call_args.args[0]['seg'][0], {'id': 0, 'fx': 2, 'fxdef': True, 'pal': 50})
+        browser.rotate(-1, 20.0)
+        self.assertEqual(send.call_args.args[0]['seg'][0]['pal'], 0)
+
+    def test_library_effects_set_their_palette(self):
+        for effect in load_effects(config.EFFECTS_FILE):
+            for segment in effect['state'].get('seg', []):
+                self.assertIn('pal', segment, effect['id'])
 
     def test_browser_keeps_working_when_the_device_is_silent(self):
         browser = EffectBrowser(Mock(), Mock(return_value=None), [(0, 'Solid'), (9, 'Rainbow')])

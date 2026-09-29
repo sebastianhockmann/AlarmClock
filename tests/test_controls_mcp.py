@@ -91,7 +91,7 @@ class ControlsMCPTests(unittest.TestCase):
                 ready.set()
 
         self.open(emit)
-        self.bus.pressed = (0, 0)  # top-left key: '1'
+        self.bus.pressed = (3, 3)  # Scan-Zeile 3, Spalte 3 = Taste oben links '1' (gedreht verdrahtet)
         self.assertTrue(ready.wait(2))
         self.assertIn(('key', '1'), events)
 

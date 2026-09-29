@@ -20,6 +20,22 @@ Restructured for maintainability:
   plays on the clock (single ALSA owner) or in the browser.
 - Manual hardware scripts moved to `tools/`.
 
+## 2026-09-29: Farben, Knöpfe, Alexa-Wecken
+
+- Green tint root cause: WLED segment palette stuck on 50 "Aurora"; commands never set `pal`.
+  Library effects now set `pal`, left-knob browser sends `fxdef` + default palette from
+  `/json/fxdata`. Live WLED segment was reset to pal 0 during diagnosis.
+- Right knob direction reversed via `inputs.right_reverse` (hardware.json, restart needed).
+- Right knob pressed+turned = Alexa volume (`right_press_rotate`), debounced 0.8 s.
+- Wake music `alexa`: daily rotation of `music.alexa_songs`, volume ramp in Alexa steps,
+  "Stopp" on end/snooze, fallback to MP3 on missing echo or failed command.
+- Key action `songs`: browse MP3s / Alexa songs with the right knob.
+- Keypad was wired rotated: `controls_mcp.KEYS` now `("DCBA", "#963", "0852", "*741")`,
+  verified on hardware (all 16 keys, 2026-09-29). Push+turn and knob direction verified too.
+- Alexa volume command is "Lautstärke N" (1-10); HA Alexa calls get a 15 s timeout.
+- Needs on the Pi: restart both services, pick "Echo über Home Assistant" under Smart Home,
+  verify knob direction and push-turn on hardware.
+
 ## Tests
 
 `python -m unittest discover -s tests -v` → 82 tests, all green on the Pi.

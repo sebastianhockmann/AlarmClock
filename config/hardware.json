@@ -14,6 +14,8 @@
     "button_hold_seconds": 2.0,
     "effect_fast_seconds": 0.15,
     "effect_fast_steps": 10,
+    "left_reverse": false,
+    "right_reverse": true,
     "legacy_button_enabled": false,
     "legacy_button_pin": 17
   },

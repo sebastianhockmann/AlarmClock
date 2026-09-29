@@ -127,7 +127,23 @@ def get_random_item(store=settings, rng=random):
     return {'file': chosen, 'message': f'Zufall: {name}'}
 
 
+def get_alexa_item(today=None, store=settings):
+    """Alexa-Lied des Tages reihum aus music.alexa_songs; None bei leerer Liste.
+
+    Ergebnis: {'alexa': Sprachbefehl, 'file': None, 'message': Spruch}.
+    """
+    today = today or date.today()
+    music = store.load()['music']
+    if not music['alexa_songs']:
+        return None
+    entry = music['alexa_songs'][today.toordinal() % len(music['alexa_songs'])]
+    return {'alexa': entry['text'], 'file': None,
+            'message': entry['message'] or music['default_message']}
+
+
 def wake_item(mode, today=None, store=settings):
+    if mode == 'alexa':
+        return get_alexa_item(today, store) or get_today_wake_item(today, store)
     return get_random_item(store) if mode == 'random' else get_today_wake_item(today, store)
 
 

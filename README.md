@@ -125,10 +125,17 @@ der Weckminute kann erneut auslösen, verpasste Termine werden nicht nachgeholt.
    WLED-Überblendung (`tt`) raus, dadurch wirkt es weich. Jeder Schritt enthält
    den vollen Effektzustand, ein verlorenes Paket schadet also nicht.
    Standard-Effekt „Morgenlicht“ (warmes Orange).
-2. *Musik* zur Weckzeit: Tageslied, Zufallssong oder keine (nur Licht).
-   Beginnt mit „Lautstärke Start“ und wird über „Lauter werden über“ Sekunden
-   bis „Lautstärke Ende“ lauter. Dreht man am rechten Knopf, endet die Rampe –
-   die Hand hat Vorrang.
+2. *Musik* zur Weckzeit: Tageslied, Zufallssong, Alexa (Liederliste) oder
+   keine (nur Licht). Beginnt mit „Lautstärke Start“ und wird über „Lauter
+   werden über“ Sekunden bis „Lautstärke Ende“ lauter. Dreht man am rechten
+   Knopf, endet die Rampe – die Hand hat Vorrang.
+   *Alexa:* das Echo aus Smart Home („Echo über Home Assistant“) spielt jeden
+   Tag reihum das nächste Lied der **Alexa-Liederliste** (Musik-Tab). Die
+   Lautstärke steigt in Alexa-Stufen (20 % → Stufe 2 … 70 % → Stufe 7, je
+   Stufe ein Befehl „Lautstärke N“). Alexa meldet kein Liedende, Schluss ist
+   nach „Spätestens aus nach“; Aus und Schlummern schicken „Stopp“. Ist kein
+   Echo eingestellt oder scheitert ein Alexa-Befehl, weckt der Wecker mit dem
+   MP3-Tageslied weiter.
 3. *Ende:* wenn das Lied vorbei ist (oder: Lied wiederholen), spätestens nach
    „Spätestens aus nach“ Minuten. Danach wird das Licht ausgeblendet oder bleibt
    an („Licht danach“).
@@ -140,6 +147,12 @@ der Weckminute kann erneut auslösen, verpasste Termine werden nicht nachgeholt.
 Der Ablauf wird in der Oberfläche als Zeitleiste angezeigt; „Jetzt testen“
 startet das Programm sofort (ohne Vorlauf).
 
+**Sonnenaufgang-Wecken** (Vorschlag): Effekt „Morgenlicht“, Licht-Vorlauf
+15 min, Heller werden über 20 min, Helligkeit 1 % → 80 %, Musik „Alexa“,
+Lautstärke 20 % → 60 % über 120 s, Spätestens aus nach 15 min, Licht danach
+„anlassen“. So ist es zur Weckzeit schon dämmrig hell und wird mit der Musik
+weiter heller.
+
 **Liedauswahl „Tageslied“:** konkretes Datum (`2026-12-24`) → jährliches Datum
 (`12-24`) → tägliche Rotation → Standardlied. „Zufallssong“ wählt aus allen
 MP3s im Ordner `mp3/` (inkl. Unterordnern). Der Spruch erscheint im LCD.
@@ -150,10 +163,18 @@ MP3s im Ordner `mp3/` (inkl. Unterordnern). Der Spruch erscheint im LCD.
 |---|---|
 | Links drehen | alle WLED-Effekte live durchblättern (`12/187 Aurora`); schnell drehen springt (`effect_fast_*` in `hardware.json`) |
 | Links drücken | Licht an/aus |
-| Rechts drehen | Lautstärke (Schrittweite `audio.volume_step`) |
-| Rechts drücken | Wecker aus / Musik an/aus (Tageslied) |
+| Links drehen nach Lampen-Taste | nach einer Home-Assistant-Taste für eine Lampe (`light.*`, auch „Farbe wechseln“) dimmt der linke Knopf 10 s lang diese Lampe in Stufen 1, 10, 20 … 100 % (geht beim Runterdrehen nie aus); jede Raste wird sofort gesendet, das LCD zeigt z. B. `Lampe 40%` |
+| Rechts drehen | Lautstärke (Schrittweite `audio.volume_step`); beim Wecken mit Alexa die Alexa-Lautstärke; in der Liederliste blättern |
+| Rechts gedrückt drehen | Alexa-Lautstärke 1–10 am Echo aus Smart Home; gesendet wird, wenn der Knopf kurz stillsteht |
+| Rechts drücken | Wecker aus / Musik an/aus (Tageslied); in der Liederliste: Lied abspielen |
 | Rechts 2 s halten | „Alles normal“: Musik aus, Licht an, Display wieder automatisch |
-| Tastenfeld | frei belegbar (Weboberfläche → Tasten), mit Klickton |
+| Tastenfeld | frei belegbar (Weboberfläche → Tasten), mit Klickton; oben links `1`, unten rechts `D` |
+
+Alexa meldet ihre Lautstärke nicht zurück. Der Knopf zählt ab dem Wert, den
+der Wecker zuletzt selbst gesetzt hat (Weckprogramm oder Knopf), anfangs ab 4;
+das LCD zeigt `Alexa Lautst. 5`. Wer gedrückt dreht, löst weder „Musik an/aus“
+noch „Alles normal“ aus. Dreht ein Knopf andersherum als erwartet:
+`inputs.right_reverse` / `inputs.left_reverse` in `hardware.json` umschalten.
 
 ### Tastenaktionen
 
@@ -162,6 +183,7 @@ MP3s im Ordner `mp3/` (inkl. Unterordnern). Der Spruch erscheint im LCD.
 | Lichteffekt | Effekt aus der Bibliothek an WLED |
 | Licht an/aus | umschalten, an oder aus |
 | Musik | Zufallssong, Tageslied, an/aus, stopp |
+| Liederliste | alle MP3s oder die Alexa-Liederliste: Taste öffnet, rechter Knopf blättert, Druck spielt; nochmal die Taste = nächstes Lied; nach 10 s ohne Drehen ist der Knopf wieder Lautstärke |
 | Wetter im Display | Wetterbericht in Zeile 2 (Open-Meteo) |
 | Display an/aus | LCD-Hintergrundlicht manuell |
 | Schlummern | wie oben |
@@ -170,11 +192,23 @@ MP3s im Ordner `mp3/` (inkl. Unterordnern). Der Spruch erscheint im LCD.
 | Alexa (Sprachbefehl) | Befehl an ein bestimmtes Echo, siehe unten |
 | HTTP-Aufruf | GET/POST an eine URL (Alexa-Routine-Trigger, Voice Monkey, IFTTT, HA-Webhook …) |
 | Home Assistant | Service-Aufruf, z. B. `light.toggle` auf `light.deckenlampe` |
+| Home Assistant: Farbe wechseln | jeder Druck stellt die nächste Farbe einer Liste ein (`light.turn_on`), die Lampe geht dabei an |
+| Alexa über Home Assistant | Sprachbefehl (ohne „Alexa“) an ein Echo über die HA-Integration „Alexa Devices“ (`alexa_devices.send_text_command`); das Echo wird aus einer Liste gewählt |
 
 Jede Aktion hat einen optionalen Anzeige-Text fürs LCD. Externe Aktionen laufen
 im Hintergrund; schlagen sie fehl, erscheint die Fehlermeldung im LCD. In der
 Oberfläche testet „Am Wecker testen“ die Taste wie echt gedrückt, „Direkt
 testen“ ruft externe Aktionen aus der Oberfläche auf und zeigt das Ergebnis.
+
+**Farbe wechseln:** Farben als Liste mit Komma, z. B. `rot, gruen, blau, warmweiss`.
+Erlaubt sind die Namen rot, orange, gelb, gruen, tuerkis, blau, lila, pink, weiss,
+warmweiss, neutralweiss, kaltweiss, außerdem `#RRGGBB` und Weißtöne in Kelvin
+(`3000K`). Der Wecker fragt die aktuelle Farbe bei Home Assistant ab und
+nimmt die nächste aus der Liste; das LCD zeigt die neue Farbe. Drückt man
+innerhalb von 15 s erneut, geht es ohne Abfrage direkt zur nächsten Farbe
+(die Lampe meldet kurz nach dem Umschalten oft noch die alte). Die Lampe
+merkt sich ihre Farbe selbst, eine zweite Taste mit `light.toggle` schaltet
+sie also mit der zuletzt gewählten Farbe wieder ein.
 
 **Vorschlag für die Belegung (Standard):**
 
@@ -233,6 +267,18 @@ Drei Wege, per Taste Alexa zu steuern:
    Das Token ist ein Amazon-Zugang – die Datei gut schützen (`chmod 600`).
 3. **Home Assistant** mit der Integration „Alexa Media Player“ (HACS) –
    dann ist jedes Echo ein `media_player` und die Deckenlampe ein `light`.
+
+### Echo über Home Assistant (Wecken, Liederliste, Knopf-Lautstärke)
+
+Unter **Smart Home → Alexa → Echo über Home Assistant** ein Echo aus der
+HA-Integration „Alexa Devices“ wählen (Home Assistant muss eingerichtet sein).
+Dieses Echo nutzen das Weckprogramm mit Musik „Alexa“, die Alexa-Liederliste
+und „rechts gedrückt drehen“. Die Befehle gehen der Reihe nach raus
+(`alexa_devices.send_text_command`), damit die Lautstärke vor dem Lied ankommt.
+
+**Weitere Ideen per Taste** (Aktion „Alexa über Home Assistant“, Befehl wie
+gesprochen): „erzähl mir einen Witz“, „wie wird das Wetter heute“, „wie spät
+ist es“, „was steht heute im Kalender“, „spiele Einschlafgeräusche“, „Stopp“.
 
 **Skills testen:** Routinen in der Alexa-App über ▶ („Abspielen“) direkt starten;
 die Trigger-URL mit `curl "https://…"` aufrufen; im Terminal
@@ -295,12 +341,24 @@ Streifen ansehen und unter „JSON“ beliebige WLED-Zustände eintragen
 (Paletten, Presets `{"ps": 3}` …). Effekte, die eine Taste oder das
 Weckprogramm nutzt, lassen sich nicht löschen.
 
+**Farbpalette:** WLED behält die Palette (`seg.pal`) über Effektwechsel hinweg.
+Deshalb setzt jeder Bibliotheks-Effekt `pal` ausdrücklich (0 = „Default“, der
+Effekt wählt seine eigenen Farben), und der linke Knopf schickt mit jedem
+Effekt `fxdef` (Tempo/Intensität des Effekts) und dessen Standardpalette aus
+`/json/fxdata`. Vorher blieb z. B. „Aurora“ (grün/türkis) nach dem gleichnamigen
+Effekt stehen und färbte alle folgenden Effekte grünlich. Ist sogar „Solid“ mit
+Orange grünlich, stimmt die Farbreihenfolge nicht: WLED → Config → LED
+Preferences → Color Order (WS2812B: GRB).
+
 ## I2C-Anbindung: Drehencoder und Tastenfeld
 
 `controls_mcp.py` (per `inputs.module` in `hardware.json`), vermessen mit
 `i2cdetect -y 1` und `tools/rotary_clock.py`:
 
-- Tastenfeld (PCF8574) `0x20`: Zeilen P0–P3, Spalten P4–P7.
+- Tastenfeld (PCF8574) `0x20`: Scan-Leitungen P0–P3, Lese-Leitungen P4–P7. Das
+  Tastenfeld ist gedreht angeschlossen; `controls_mcp.KEYS` bildet das ab
+  (vermessen: oben links `1`, oben rechts `A`, unten links `*`, unten rechts `D`).
+  Zum Nachprüfen alle Tasten der Reihe nach drücken und im Log `[Eingabe] Taste:` lesen.
 - MCP23017 `0x21`: linker Encoder A/B PB6/PB7, Taster PB5; rechter Encoder
   A/B PA0/PA1, Taster PA2.
 - LCD (PCF8574) `0x27`, gemeinsamer Bus 1.
@@ -310,7 +368,9 @@ Ereignisse in die Warteschlange. Schlägt die Initialisierung fehl, läuft der
 Wecker ohne Tastenfeld/Encoder weiter. Ein eigenes Eingabemodul muss
 `open_controls(emit)` bereitstellen und ein Objekt mit `close()` liefern;
 Ereignisse: `left_rotate` (±1), `left_press`, `key` ("1"…"D"),
-`right_rotate`, `right_press`, `right_hold`.
+`right_rotate`, `right_press`, `right_hold`, `right_press_rotate` (gedrückt
+gedreht; dann kein `right_press`/`right_hold`). Die Drehrichtung lässt sich
+je Knopf mit `inputs.left_reverse` / `inputs.right_reverse` umkehren.
 
 ## Debug-Ausgaben
 

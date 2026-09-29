@@ -9,11 +9,25 @@ Die Lichtrampe schickt alle LIGHT_STEP_SECONDS einen neuen Helligkeitswert
 mit WLED-Uebergang ("tt"), damit es trotz grober Schritte weich aussieht.
 Jeder Schritt enthaelt den vollen Effektzustand: faellt ein Befehl in der
 WLEDManager-Warteschlange weg, stimmt der naechste trotzdem.
+
+Musik ueber Alexa (item['alexa'] = Sprachbefehl): Die Lautstaerke-Rampe
+laeuft in Alexa-Stufen 1-10 ("Lautstärke N"), jede Stufe nur einmal.
+Das Ende eines Liedes meldet Alexa nicht - Schluss ist nach max_minutes.
 """
 import copy
 
 LIGHT_STEP_SECONDS = 2.0
 LIGHT_OFF_TRANSITION = 50  # 5 s Ausblenden (WLED-Einheit: 100 ms)
+ALEXA_STOP = 'Stopp'
+
+
+def alexa_level(percent):
+    """Prozent (0-100) -> Alexa-Lautstaerke 1-10."""
+    return max(1, min(10, round(percent / 10)))
+
+
+def alexa_volume_command(level):
+    return f'Lautstärke {level}'
 
 
 def percent_to_bri(percent):
@@ -29,9 +43,13 @@ def ramp(start, end, elapsed, duration):
 
 
 class WakeSession:
-    def __init__(self, program, player, send_light, effect=None, alarm=None, day=None):
+    def __init__(self, program, player, send_light, effect=None, alarm=None, day=None,
+                 alexa=None):
         self.program = program
         self.player = player
+        # alexa(text) -> bool: Sprachbefehl ans Echo einreihen (integrations.AlexaSpeaker).
+        self.alexa = alexa
+        self.alexa_level = None
         self.send_light = send_light
         self.effect_state = copy.deepcopy(effect['state']) if effect else None
         self.alarm = alarm
@@ -58,6 +76,10 @@ class WakeSession:
         self.light_start = now
         self._update_light(now, force=True)
 
+    @property
+    def uses_alexa(self):
+        return bool(self.item and self.item.get('alexa'))
+
     def start_music(self, item, now):
         """Musikphase beginnen. Gibt eine Fehlermeldung zurueck oder None."""
         self.start_light(now)
@@ -69,6 +91,14 @@ class WakeSession:
             return None
         volume = (self.program['volume_start'] if self.program['volume_ramp_seconds']
                   else self.program['volume_end'])
+        if self.uses_alexa:
+            level = alexa_level(volume)
+            if self.alexa is None or not self.alexa(alexa_volume_command(level)):
+                self.audio_error = 'Alexa nicht bereit'
+                return self.audio_error
+            self.alexa(item['alexa'])
+            self.alexa_level = level
+            return None
         self._last_volume = self.player.set_volume(volume)
         try:
             self.player.play(item['file'])
@@ -93,6 +123,14 @@ class WakeSession:
         if self.program['music'] == 'none' or self.audio_error:
             # Nur Licht (oder Audio kaputt): bis zur Maximaldauer.
             return True
+        if self.uses_alexa:
+            if not self.volume_manual:
+                level = alexa_level(ramp(self.program['volume_start'], self.program['volume_end'],
+                                         elapsed, self.program['volume_ramp_seconds']))
+                if level != self.alexa_level:
+                    self.alexa(alexa_volume_command(level))
+                    self.alexa_level = level
+            return True
         if not self.volume_manual:
             volume = round(ramp(self.program['volume_start'], self.program['volume_end'],
                                 elapsed, self.program['volume_ramp_seconds']))
@@ -109,12 +147,16 @@ class WakeSession:
 
     def snooze(self, now):
         self.player.stop()
+        if self.uses_alexa and self.snoozed_until is None:
+            self.alexa(ALEXA_STOP)
         self.snoozed_until = now + self.program['snooze_minutes'] * 60
         return self.snoozed_until
 
     def finish(self):
         """Musik aus; Licht je nach Einstellung ausblenden oder anlassen."""
         self.player.stop()
+        if self.uses_alexa and self.music_start is not None and self.snoozed_until is None:
+            self.alexa(ALEXA_STOP)
         if self.light_start is not None and self.program['light_end'] == 'off':
             self.send_light({'on': False, 'tt': LIGHT_OFF_TRANSITION})
             return True

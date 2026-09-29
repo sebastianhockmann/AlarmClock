@@ -85,6 +85,9 @@ KEYPAD_ADDRESS = _address(_hw('inputs', 'keypad_address', 0x20), 0x20)
 BUTTON_HOLD_SECONDS = float(_hw('inputs', 'button_hold_seconds', 2.0))
 EFFECT_FAST_SECONDS = float(_hw('inputs', 'effect_fast_seconds', 0.15))
 EFFECT_FAST_STEPS = int(_hw('inputs', 'effect_fast_steps', 10))
+# Drehrichtung umkehren, falls A/B am Encoder andersherum verdrahtet sind.
+LEFT_REVERSE = bool(_hw('inputs', 'left_reverse', False))
+RIGHT_REVERSE = bool(_hw('inputs', 'right_reverse', False))
 LEGACY_BUTTON_ENABLED = bool(_hw('inputs', 'legacy_button_enabled', False))
 BUTTON_PIN = int(_hw('inputs', 'legacy_button_pin', 17))
 

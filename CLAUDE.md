@@ -80,15 +80,24 @@ Modules:
 - `lcd.py` (imported lazily in `main()`), `chime.py`, `button.py` (legacy GPIO, disabled).
 
 Events (queue, main thread only): input `left_rotate`, `left_press`, `key`, `right_rotate`,
-`right_press`, `right_hold`, `legacy_press`, `error`; remote (ipc) `key`, `action`,
+`right_press`, `right_hold`, `right_press_rotate`, `legacy_press`, `error`; remote (ipc) `key`, `action`,
 `play_today`, `play_random`, `play_file`, `stop_audio`, `wake_test`, `wake_stop`, `volume`,
-`notice`; internal `weather_result`.
+`notice`; internal `weather_result`, `alexa_error` (wake command failed → fall back to MP3).
 
 Keypad action types (`settings.ACTION_SPECS`): `none`, `effect`, `light`, `music`, `display`,
-`snooze`, `wake_test`, `alarm_toggle`, `weather`, `http`, `home_assistant`, `alexa`.
+`songs` (browse MP3s or `music.alexa_songs` with the right knob), `snooze`, `wake_test`,
+`alarm_toggle`, `weather`, `http`, `home_assistant`, `ha_color`
+(cycles `light.turn_on` through a color list, starting from the lamp's current color),
+`ha_alexa` (`alexa_devices.send_text_command` by HA device_id), `alexa`.
 
 Control model: left knob = light, right knob = sound, keypad = configurable actions
-(during an alarm any key = snooze by default), long right press = "Alles normal" reset.
+(during an alarm any key = snooze by default), long right press = "Alles normal" reset,
+right knob pressed+turned = Alexa volume, left knob within 10 s after a HA lamp key
+(`home_assistant`/`ha_color` on `light.*`) = dim that lamp (`integrations.LampDimmer`, steps 1/10..100 %, newest value wins). Alexa (wake music `alexa`, song list, knob volume)
+goes through `integrations.AlexaSpeaker` (serial queue, echo = `alexa.ha_device_id`).
+
+WLED keeps `seg.pal` across effect changes: every library effect sets `pal`, and the
+left-knob browser sends `fxdef` + the effect's default palette from `/json/fxdata`.
 
 ## Rules / gotchas
 

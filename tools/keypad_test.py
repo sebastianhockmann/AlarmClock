@@ -15,7 +15,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))  # Projektmodule (tools/ liegt eine Ebene tiefer)
 import config
 
-KEYS = ("123A", "456B", "789C", "*0#D")
+KEYS = ("DCBA", "#963", "0852", "*741")  # wie controls_mcp.KEYS (Tastenfeld gedreht)
 
 
 def pins(value):

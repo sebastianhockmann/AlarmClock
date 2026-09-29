@@ -193,6 +193,41 @@ def wled_host(value):
     return config.normalize_wled_host(value)
 
 
+# Farbnamen fuer Home-Assistant-Lampen (ohne Umlaute, wie auf dem LCD).
+COLOR_NAMES = {
+    'rot': (255, 0, 0), 'orange': (255, 120, 0), 'gelb': (255, 255, 0),
+    'gruen': (0, 255, 0), 'tuerkis': (0, 255, 200), 'blau': (0, 0, 255),
+    'lila': (150, 0, 255), 'pink': (255, 0, 150), 'weiss': (255, 255, 255),
+    'warmweiss': '2700k', 'neutralweiss': '4000k', 'kaltweiss': '6500k',
+}
+
+
+def parse_color(value):
+    """'rot', '#ff8800' oder '2700K' -> ('rgb', (r, g, b)) bzw. ('kelvin', k)."""
+    if not isinstance(value, str):
+        raise ValueError('Farbe muss Text sein')
+    token = value.strip().lower()
+    token = COLOR_NAMES.get(token, token)
+    if isinstance(token, tuple):
+        return 'rgb', token
+    if re.fullmatch(r'#[0-9a-f]{6}', token):
+        return 'rgb', tuple(int(token[i:i + 2], 16) for i in (1, 3, 5))
+    match = re.fullmatch(r'(\d{4,5})k', token)
+    if match and 1000 <= int(match.group(1)) <= 10000:
+        return 'kelvin', int(match.group(1))
+    raise ValueError(f'unbekannte Farbe "{value.strip()}" (Name, #RRGGBB oder z. B. 2700K)')
+
+
+def color_list(value):
+    if isinstance(value, str):
+        value = [part for part in value.split(',') if part.strip()]
+    if not isinstance(value, list) or not 1 <= len(value) <= 20:
+        raise ValueError('1 bis 20 Farben angeben, mit Komma getrennt')
+    for entry in value:
+        parse_color(entry)
+    return [entry.strip().lower() for entry in value]
+
+
 def validate_fields(value, spec, strict, defaults=None, label=''):
     """Objekt feldweise pruefen. spec: {feld: (converter, eingebauter Rueckfall)}."""
     if not isinstance(value, dict):
@@ -224,6 +259,7 @@ FIELD_NAMES = {
     'snooze_minutes': 'Schlummerzeit', 'date': 'Datum', 'file': 'Datei',
     'message': 'Spruch', 'start': 'Beginn', 'end': 'Ende', 'text': 'Text',
     'url': 'URL', 'service': 'Service', 'entity_id': 'Entity-ID', 'device': 'Geraet',
+    'device_id': 'Echo', 'colors': 'Farben',
     'latitude': 'Breitengrad', 'longitude': 'Laengengrad', 'name': 'Name',
 }
 
@@ -244,7 +280,7 @@ WAKE_SPEC = {
     'light_ramp_minutes': (int_range(0, 60), 2),
     'brightness_start': (int_range(1, 100), 3),
     'brightness_end': (int_range(1, 100), 80),
-    'music': (choice('daily', 'random', 'none'), 'daily'),
+    'music': (choice('daily', 'random', 'alexa', 'none'), 'daily'),
     'volume_start': (int_range(0, 100), 20),
     'volume_end': (int_range(0, 100), 70),
     'volume_ramp_seconds': (int_range(0, 600), 60),
@@ -283,6 +319,12 @@ ROTATION_SPEC = {
     'message': (text(120), ''),
 }
 
+# Alexa-Liederliste: Sprachbefehl wie gesprochen, z. B. "spiele Looser von Apache 207".
+ALEXA_SONG_SPEC = {
+    'text': (text(200, required=True), None),
+    'message': (text(120), ''),
+}
+
 MUSIC_SPEC = {
     'default_song': (music_file, 'mp3/xmas/default.mp3'),
     'default_message': (text(120), 'Guten Morgen!'),
@@ -301,6 +343,8 @@ WEATHER_SPEC = {
 
 ALEXA_SPEC = {
     'default_device': (text(80), ''),
+    # Echo (HA "Alexa Devices") fuer Wecken mit Alexa, Liederliste und Alexa-Lautstaerke.
+    'ha_device_id': (lambda v: _device_id(v) if v else '', ''),
 }
 
 # Tastenaktionen. 'label' ist bei allen optional und erscheint auf dem LCD.
@@ -310,6 +354,8 @@ ACTION_SPECS = {
     'light': {'mode': (choice('toggle', 'on', 'off'), 'toggle')},
     'music': {'source': (choice('today', 'random', 'toggle', 'stop'), 'toggle')},
     'display': {},
+    # Liederliste mit dem rechten Drehknopf durchblaettern, Druck spielt ab.
+    'songs': {'source': (choice('mp3', 'alexa'), 'mp3')},
     'snooze': {},
     'wake_test': {},
     'alarm_toggle': {},
@@ -318,10 +364,22 @@ ACTION_SPECS = {
              'body': (text(2000), '')},
     'home_assistant': {'service': (lambda v: _service(v), None),
                        'entity_id': (text(120, required=True), None)},
+    # Jeder Druck: naechste Farbe der Liste (light.turn_on), Lampe geht dabei an.
+    'ha_color': {'entity_id': (text(120, required=True), None),
+                 'colors': (color_list, None)},
+    # Sprachbefehl an ein Echo ueber die HA-Integration "Alexa Devices".
+    'ha_alexa': {'device_id': (lambda v: _device_id(v), None),
+                 'text': (text(300, required=True), None)},
     'alexa': {'device': (text(80), ''),
               'command': (choice('text', 'routine', 'speak', 'weather'), 'text'),
               'text': (text(300), '')},
 }
+
+
+def _device_id(value):
+    if not isinstance(value, str) or not re.fullmatch(r'[0-9a-f]{32}', value.strip()):
+        raise ValueError('Echo aus der Liste waehlen')
+    return value.strip()
 
 
 def _service(value):
@@ -399,6 +457,8 @@ def validate_music(value, strict=True, defaults=None):
         raise ValueError('Jedes Datum darf nur einmal vorkommen')
     result['rotation'] = _validate_list(value.get('rotation', []), _strict_fields(ROTATION_SPEC),
                                         strict, 'Rotation', 400)
+    result['alexa_songs'] = _validate_list(value.get('alexa_songs', []), _strict_fields(ALEXA_SONG_SPEC),
+                                           strict, 'Alexa-Lied', 200)
     return result
 
 

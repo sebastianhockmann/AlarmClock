@@ -52,6 +52,13 @@
       {"file": "mp3/xmas/santa_claus_town.mp3", "message": "Geniesse den Augenblick."},
       {"file": "mp3/xmas/under_mistletoe.mp3", "message": "Heute darf leicht sein."},
       {"file": "mp3/xmas/zuckowski_weihnachtsbaeckerei.mp3", "message": "Schoen, dass du da bist!"}
+    ],
+    "alexa_songs": [
+      {"text": "spiele Here Comes the Sun von den Beatles", "message": "Guten Morgen!"},
+      {"text": "spiele Walking on Sunshine von Katrina and the Waves", "message": "Heute ist dein Tag!"},
+      {"text": "spiele Happy von Pharrell Williams", "message": "Gute Laune!"},
+      {"text": "spiele Guten Morgen Sonnenschein von Nana Mouskouri", "message": "Aufstehen!"},
+      {"text": "spiele Looser von Apache 207", "message": "Los gehts!"}
     ]
   },
   "greetings": [
@@ -89,7 +96,8 @@
     "token": ""
   },
   "alexa": {
-    "default_device": ""
+    "default_device": "",
+    "ha_device_id": ""
   },
   "weather": {
     "location": "",

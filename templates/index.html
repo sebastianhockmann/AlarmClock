@@ -202,8 +202,10 @@ code { background: var(--chip); padding: 1px 5px; border-radius: 5px; font-size:
     <table>
       <tr><td>Links drehen</td><td>alle Lichteffekte des WLED durchblättern (schnell drehen = springen)</td></tr>
       <tr><td>Links drücken</td><td>Licht an/aus</td></tr>
-      <tr><td>Rechts drehen</td><td>Lautstärke</td></tr>
-      <tr><td>Rechts drücken</td><td>Wecker aus / Musik an/aus</td></tr>
+      <tr><td>Links drehen nach Lampen-Taste</td><td>10 s lang die Home-Assistant-Lampe dimmen (z. B. nach „Farbe wechseln“)</td></tr>
+      <tr><td>Rechts drehen</td><td>Lautstärke (beim Wecken mit Alexa: Alexa-Lautstärke; in der Liederliste: blättern)</td></tr>
+      <tr><td>Rechts gedrückt drehen</td><td>Alexa-Lautstärke (Echo aus „Smart Home“)</td></tr>
+      <tr><td>Rechts drücken</td><td>Wecker aus / Musik an/aus (in der Liederliste: Lied abspielen)</td></tr>
       <tr><td>Rechts 2 s halten</td><td>„Alles normal“: Musik aus, Licht an, Display automatisch</td></tr>
     </table>
   </div>
@@ -242,6 +244,17 @@ code { background: var(--chip); padding: 1px 5px; border-radius: 5px; font-size:
       <tbody id="rotation-list"></tbody></table>
     <div class="row end">
       <button onclick="addRotation()">＋ Lied</button>
+      <span class="spacer"></span>
+      <button class="primary" onclick="saveMusic()">Musik speichern</button>
+    </div>
+  </div>
+  <div class="card">
+    <h2>Alexa-Liederliste</h2>
+    <p class="hint">Für „Weckprogramm → Musik: Alexa“ (jeden Tag reihum das nächste Lied) und die Tastenaktion „Liederliste“. Befehl so, wie man ihn Alexa sagen würde, ohne „Alexa“.</p>
+    <table><thead><tr><th>Befehl</th><th>Spruch</th><th></th></tr></thead>
+      <tbody id="alexa-song-list"></tbody></table>
+    <div class="row end">
+      <button onclick="addAlexaSong()">＋ Lied</button>
       <span class="spacer"></span>
       <button class="primary" onclick="saveMusic()">Musik speichern</button>
     </div>
@@ -285,12 +298,13 @@ code { background: var(--chip); padding: 1px 5px; border-radius: 5px; font-size:
     <p class="hint">Alexa-Geräte haben keine lokale Schnittstelle – gesteuert wird über die Amazon-Cloud, das Gerät wird per <b>Name</b> gewählt, nicht per IP.</p>
     <div class="grid">
       <label class="field">Standard-Echo (Name wie in der Alexa-App)<input id="alexa-device" list="alexa-devices" placeholder="z. B. Echo Kinderzimmer"></label>
+      <label class="field">Echo über Home Assistant (Wecken, Liederliste, Knopf-Lautstärke)<select id="alexa-ha-device"></select></label>
     </div>
     <datalist id="alexa-devices"></datalist>
     <div class="row end">
       <span class="muted" id="alexa-status"></span><span class="spacer"></span>
       <button onclick="loadAlexaDevices()">Geräte abfragen</button>
-      <button class="primary" onclick="saveSection('alexa', {default_device: val('alexa-device')})">Speichern</button>
+      <button class="primary" onclick="saveSection('alexa', {default_device: val('alexa-device'), ha_device_id: val('alexa-ha-device')})">Speichern</button>
     </div>
     <div class="help">
       <b>Drei Wege, per Taste Alexa zu steuern</b> (Aktionstyp unter „Tasten“):
@@ -490,7 +504,7 @@ const WAKE_FIELDS = {
     ['brightness_end', 'Helligkeit Ende', 'range', 1, 100, 1, '%'],
   ],
   'wake-music': [
-    ['music', 'Musik', 'select', [['daily', 'Tageslied'], ['random', 'Zufallssong'], ['none', 'keine (nur Licht)']]],
+    ['music', 'Musik', 'select', [['daily', 'Tageslied'], ['random', 'Zufallssong'], ['alexa', 'Alexa (Liederliste)'], ['none', 'keine (nur Licht)']]],
     ['volume_start', 'Lautstärke Start', 'range', 0, 100, 5, '%'],
     ['volume_end', 'Lautstärke Ende', 'range', 0, 100, 5, '%'],
     ['volume_ramp_seconds', 'Lauter werden über', 'range', 0, 300, 10, 's'],
@@ -530,8 +544,15 @@ function renderTimeline() {
     lines.push(`<b>${t(w.light_ramp_minutes - lead)}</b> Licht erreicht ${w.brightness_end} %`);
   }
   if (w.music !== 'none') {
-    lines.push(`<b>Weckzeit</b> ${w.music === 'random' ? 'Zufallssong' : 'Tageslied'} mit ${w.volume_start} %, in ${w.volume_ramp_seconds} s auf ${w.volume_end} %`);
-    lines.push(`<b>Ende</b> ${w.stop_after_song ? 'wenn das Lied vorbei ist, ' : 'Lied wiederholt sich, '}spätestens nach ${w.max_minutes} min`);
+    if (w.music === 'alexa') {
+      const lvl = p => Math.max(1, Math.min(10, Math.round(p / 10)));
+      lines.push(`<b>Weckzeit</b> Alexa spielt das nächste Lied der Alexa-Liederliste, Lautstärke ${lvl(w.volume_start)} → ${lvl(w.volume_end)} (von 10) in ${w.volume_ramp_seconds} s`);
+      if (!S.settings.alexa.ha_device_id) lines.push('<span style="color:var(--bad)">Kein Echo eingestellt (Smart Home) – es läuft das MP3-Tageslied.</span>');
+      lines.push(`<b>Ende</b> spätestens nach ${w.max_minutes} min (Alexa meldet das Liedende nicht)`);
+    } else {
+      lines.push(`<b>Weckzeit</b> ${w.music === 'random' ? 'Zufallssong' : 'Tageslied'} mit ${w.volume_start} %, in ${w.volume_ramp_seconds} s auf ${w.volume_end} %`);
+      lines.push(`<b>Ende</b> ${w.stop_after_song ? 'wenn das Lied vorbei ist, ' : 'Lied wiederholt sich, '}spätestens nach ${w.max_minutes} min`);
+    }
   } else lines.push(`<b>Ende</b> nach ${w.max_minutes} min`);
   if (eff) lines.push(`Danach: Licht ${w.light_end === 'off' ? 'wird ausgeblendet' : 'bleibt an'}`);
   lines.push(`Rechter Knopf = aus · ${w.snooze_any_key ? 'jede Taste' : 'Schlummer-Taste'} = ${w.snooze_minutes} min schlummern`);
@@ -542,10 +563,11 @@ async function saveWake() { const r = await saveSection('wake', wake); if (r.suc
 // ---------- Tasten ----------
 let keys = {};
 const ACTIONS = [
-  ['none', 'nichts'], ['effect', 'Lichteffekt'], ['light', 'Licht an/aus'], ['music', 'Musik'],
+  ['none', 'nichts'], ['effect', 'Lichteffekt'], ['light', 'Licht an/aus'], ['music', 'Musik'], ['songs', 'Liederliste (rechter Knopf)'],
   ['weather', 'Wetter im Display'], ['display', 'Display an/aus'], ['snooze', 'Schlummern'],
   ['alarm_toggle', 'Wecker an/aus'], ['wake_test', 'Weckprogramm testen'],
   ['alexa', 'Alexa (Sprachbefehl)'], ['http', 'HTTP-Aufruf (z. B. Alexa-Routine)'], ['home_assistant', 'Home Assistant'],
+  ['ha_color', 'Home Assistant: Farbe wechseln'], ['ha_alexa', 'Alexa über Home Assistant'],
 ];
 const ACTION_NAME = Object.fromEntries(ACTIONS);
 function keyLabel(a) {
@@ -554,13 +576,15 @@ function keyLabel(a) {
   if (a.type === 'effect') return (S.settings.effects.find(e => e.id === a.effect) || {}).name || a.effect;
   if (a.type === 'music') return {today: 'Tageslied', random: 'Zufallssong', toggle: 'Musik an/aus', stop: 'Musik stopp'}[a.source];
   if (a.type === 'light') return {toggle: 'Licht an/aus', on: 'Licht an', off: 'Licht aus'}[a.mode];
+  if (a.type === 'songs') return a.source === 'alexa' ? 'Alexa-Lieder' : 'MP3-Liste';
   if (a.type === 'alexa') return 'Alexa: ' + (a.command === 'weather' ? 'Wetter' : a.text);
+  if (a.type === 'ha_alexa') return 'Alexa: ' + a.text;
   return ACTION_NAME[a.type];
 }
 function renderKeypad() {
   $('keypad').innerHTML = S.keypad.flat().map(k => {
     const a = keys[k];
-    const remote = ['alexa', 'http', 'home_assistant'].includes(a.type);
+    const remote = ['alexa', 'http', 'home_assistant', 'ha_color', 'ha_alexa'].includes(a.type);
     return `<button class="key${k === selectedKey ? ' sel' : ''}${remote ? ' remote' : ''}" onclick="selectKey('${k}')"><b>${esc(k)}</b><small>${esc(keyLabel(a))}</small></button>`;
   }).join('');
 }
@@ -572,6 +596,7 @@ function renderKeyEditor() {
   let fields = '';
   if (a.type === 'effect') fields = keyField('Effekt', '', `<select ${set('effect')}>${options(S.settings.effects.map(e => [e.id, e.name]), a.effect)}</select>`);
   if (a.type === 'light') fields = keyField('Modus', '', `<select ${set('mode')}>${options([['toggle', 'umschalten'], ['on', 'an'], ['off', 'aus']], a.mode)}</select>`);
+  if (a.type === 'songs') fields = keyField('Liste', '', `<select ${set('source')}>${options([['mp3', 'alle MP3s'], ['alexa', 'Alexa-Liederliste']], a.source)}</select>`);
   if (a.type === 'music') fields = keyField('Was', '', `<select ${set('source')}>${options([['random', 'Zufallssong'], ['today', 'Tageslied'], ['toggle', 'an/aus'], ['stop', 'stopp']], a.source)}</select>`);
   if (a.type === 'http') fields =
     keyField('URL', '', `<input value="${esc(a.url)}" placeholder="https://…" ${set('url')}>`) +
@@ -580,11 +605,22 @@ function renderKeyEditor() {
   if (a.type === 'home_assistant') fields =
     keyField('Service', '', `<input value="${esc(a.service)}" placeholder="light.toggle" ${set('service')}>`) +
     keyField('Entity-ID', '', `<input value="${esc(a.entity_id)}" placeholder="light.deckenlampe" ${set('entity_id')}>`);
+  if (a.type === 'ha_color') fields =
+    keyField('Entity-ID', '', `<input value="${esc(a.entity_id)}" placeholder="light.deckenlampe" ${set('entity_id')}>`) +
+    keyField('Farben (Reihenfolge, mit Komma)', '', `<input value="${esc([].concat(a.colors || []).join(', '))}" placeholder="rot, gruen, blau, warmweiss" ${set('colors')}>`);
+  if (a.type === 'ha_alexa') {
+    if (haAlexa === null) loadHaAlexa();
+    const devices = (haAlexa || []).map(d => [d.id, d.name]);
+    if (a.device_id && !devices.some(d => d[0] === a.device_id)) devices.unshift([a.device_id, a.device_id]);
+    fields =
+      keyField('Echo', '', `<select ${set('device_id')}>${options([['', haAlexa ? '– wählen –' : 'lade …'], ...devices], a.device_id)}</select>`) +
+      keyField('Befehl (wie gesprochen, ohne „Alexa“)', '', `<input value="${esc(a.text)}" placeholder="spiele Looser von Apache 207" ${set('text')}>`);
+  }
   if (a.type === 'alexa') fields =
     keyField('Echo', '', `<input value="${esc(a.device)}" list="alexa-devices" placeholder="Standard: ${esc(S.settings.alexa.default_device || 'nicht gesetzt')}" ${set('device')}>`) +
     keyField('Art', '', `<select onchange="keys[selectedKey].command=this.value;renderKeypad();renderKeyEditor()">${options([['text', 'Sprachbefehl'], ['routine', 'Routine (Name)'], ['speak', 'Vorlesen'], ['weather', 'Wetterbericht']], a.command)}</select>`) +
     (a.command === 'weather' ? '' : keyField(a.command === 'routine' ? 'Routine-Name' : a.command === 'speak' ? 'Text zum Vorlesen' : 'Befehl (wie gesprochen, ohne „Alexa“)', '', `<input value="${esc(a.text)}" placeholder="spiele Amazon Music" ${set('text')}>`));
-  const remote = ['alexa', 'http', 'home_assistant'].includes(a.type);
+  const remote = ['alexa', 'http', 'home_assistant', 'ha_color', 'ha_alexa'].includes(a.type);
   $('key-editor').innerHTML = `
     <h2>Taste ${esc(selectedKey)}</h2>
     <div class="grid">
@@ -592,6 +628,8 @@ function renderKeyEditor() {
       ${fields}
       ${a.type === 'none' ? '' : keyField('Anzeige-Text (optional)', '', `<input value="${esc(a.label)}" maxlength="40" placeholder="${esc(keyLabel({...a, label: ''}))}" ${set('label')}>`)}
     </div>
+    ${a.type === 'songs' ? '<div class="help">Taste öffnet die Liste, rechter Knopf drehen blättert, rechter Knopf drücken spielt das Lied. Nochmal die Taste = nächstes Lied. Nach 10 s ohne Drehen ist der Knopf wieder Lautstärke. Alexa-Lieder gehen an das Echo aus „Smart Home“.</div>' : ''}
+    ${a.type === 'ha_color' ? '<div class="help">Jeder Druck stellt die nächste Farbe ein und schaltet die Lampe dabei an. Danach dimmt der linke Knopf 10 s lang diese Lampe. Farben: rot, orange, gelb, gruen, tuerkis, blau, lila, pink, weiss, warmweiss, neutralweiss, kaltweiss, #RRGGBB oder Kelvin wie 3000K. Ein/aus bleibt eine eigene Taste (Home Assistant, light.toggle).</div>' : ''}
     ${a.type === 'alexa' && !S.alexa_script ? '<div class="help">alexa_remote_control.sh ist auf dem Pi noch nicht installiert – siehe README „Alexa“. Alternativ HTTP-Aufruf mit Routine-Trigger-URL.</div>' : ''}
     <div class="row end">
       <button onclick="testKey(false)">Am Wecker testen</button>
@@ -602,10 +640,21 @@ function renderKeyEditor() {
 }
 const KEY_DEFAULTS = {
   effect: () => ({effect: (S.settings.effects[0] || {}).id}), light: () => ({mode: 'toggle'}),
-  music: () => ({source: 'random'}), http: () => ({url: '', method: 'GET', body: ''}),
+  music: () => ({source: 'random'}), songs: () => ({source: 'mp3'}), http: () => ({url: '', method: 'GET', body: ''}),
   home_assistant: () => ({service: 'light.toggle', entity_id: ''}),
+  ha_color: () => ({entity_id: '', colors: ['rot', 'orange', 'gelb', 'gruen', 'tuerkis', 'blau', 'lila', 'pink', 'warmweiss']}),
   alexa: () => ({device: '', command: 'text', text: ''}),
+  ha_alexa: () => ({device_id: '', text: ''}),
 };
+// Alexa-Geraete aus Home Assistant (null = noch nicht geladen, [] = keine/Fehler).
+let haAlexa = null;
+async function loadHaAlexa() {
+  haAlexa = [];
+  const r = await api('GET', '/api/ha/alexa_devices');
+  if (r.success) haAlexa = r.devices;
+  if (keys[selectedKey] && keys[selectedKey].type === 'ha_alexa') renderKeyEditor();
+  renderHaEcho();
+}
 function changeKeyType(type) {
   keys[selectedKey] = {type, ...(KEY_DEFAULTS[type] ? KEY_DEFAULTS[type]() : {})};
   renderKeypad(); renderKeyEditor();
@@ -639,10 +688,21 @@ function renderMusic() {
     <td><select onchange="music.rotation[${i}].file=this.value">${fileOptions(d.file)}</select></td>
     <td><input value="${esc(d.message)}" onchange="music.rotation[${i}].message=this.value"></td>
     <td><button class="small danger" onclick="music.rotation.splice(${i},1);renderMusic()">✕</button></td></tr>`).join('');
+  $('alexa-song-list').innerHTML = music.alexa_songs.map((d, i) => `<tr>
+    <td><input value="${esc(d.text)}" maxlength="200" placeholder="spiele Here Comes the Sun von den Beatles" onchange="music.alexa_songs[${i}].text=this.value"></td>
+    <td><input value="${esc(d.message)}" maxlength="120" onchange="music.alexa_songs[${i}].message=this.value"></td>
+    <td style="white-space:nowrap"><button class="small" title="Am Echo abspielen" onclick="testAlexaSong(${i})">▶</button>
+      <button class="small danger" onclick="music.alexa_songs.splice(${i},1);renderMusic()">✕</button></td></tr>`).join('');
 }
 $('default-song').onchange = e => music.default_song = e.target.value;
 $('default-message').onchange = e => music.default_message = e.target.value;
 function addDate() { music.dates.push({date: '', file: S.music_files[0] || '', message: ''}); renderMusic(); }
+function addAlexaSong() { music.alexa_songs.push({text: 'spiele ', message: ''}); renderMusic(); }
+async function testAlexaSong(i) {
+  if (!S.settings.alexa.ha_device_id) { toast('Erst unter Smart Home ein Echo wählen', true); return; }
+  const r = await api('POST', '/api/action/test?direct=1', {type: 'ha_alexa', device_id: S.settings.alexa.ha_device_id, text: music.alexa_songs[i].text});
+  if (r.success) toast(r.message || 'Gesendet');
+}
 function addRotation() { music.rotation.push({file: S.music_files[0] || '', message: ''}); renderMusic(); }
 async function saveMusic() { const r = await saveSection('music', music); if (r.success) { music = clone(S.settings.music); renderMusic(); } }
 function listen(f) { const p = $('player'); p.style.display = 'block'; p.src = '/api/music/file?file=' + encodeURIComponent(f); p.play(); }
@@ -730,8 +790,16 @@ async function testWled() {
 }
 
 // ---------- Smart Home ----------
+function renderHaEcho() {
+  const current = S.settings.alexa.ha_device_id;
+  const devices = (haAlexa || []).map(d => [d.id, d.name]);
+  if (current && !devices.some(d => d[0] === current)) devices.unshift([current, current]);
+  $('alexa-ha-device').innerHTML = options([['', haAlexa ? '– keins –' : 'lade …'], ...devices], current);
+}
 function renderSmart() {
   $('alexa-device').value = S.settings.alexa.default_device;
+  if (haAlexa === null) loadHaAlexa();
+  renderHaEcho();
   $('alexa-script').textContent = S.alexa_script ? 'installiert ✓' : 'nicht installiert';
   $('ha-url').value = S.settings.home_assistant.url;
   $('ha-token').value = '';

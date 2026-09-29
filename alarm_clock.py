@@ -72,7 +72,8 @@ def main():
     try:
         # Linker Knopf: alle Effekte des Geraets; bis die Liste da ist, die eigene Bibliothek.
         browser = EffectBrowser(wled.send, wled.get_status,
-                                browser_entries(settings.get('effects')))
+                                browser_entries(settings.get('effects')),
+                                fxdata=lambda: wled.fetch('fxdata'))
         browser.refresh()
         controller = ClockController(player, wled.send, browser=browser,
                                      backlight=lcd_set_backlight, emit=emit,

@@ -17,7 +17,9 @@ GPIOA, GPIOB = 0x12, 0x13
 LEFT = {'a': 14, 'b': 15, 'button': 13}   # PB6, PB7, PB5
 RIGHT = {'a': 0, 'b': 1, 'button': 2}     # PA0, PA1, PA2
 
-KEYS = ("123A", "456B", "789C", "*0#D")
+# Tastenfeld liegt gedreht am PCF8574 (vermessen 2026-09-29): KEYS[Zeilen-Pin][Spalten-Pin].
+# Auf der Front: oben links 1, oben rechts A, unten links *, unten rechts D.
+KEYS = ("DCBA", "#963", "0852", "*741")
 ROWS = (0, 1, 2, 3)
 COLS = (4, 5, 6, 7)
 
@@ -85,6 +87,7 @@ class MCPControls:
         self.right_button = _DebouncedButton(bool((gpio >> RIGHT['button']) & 1))
         self.right_pressed_at = None
         self.right_hold_fired = False
+        self.right_turned = False
         self.candidate_key = self.stable_key = None
         self.key_changed_at = time.monotonic()
 
@@ -128,13 +131,21 @@ class MCPControls:
 
         left_delta = self.left_decoder.update(self._encoder_state(gpio, LEFT))
         if left_delta:
+            left_delta = -left_delta if config.LEFT_REVERSE else left_delta
             self._debug(f'Drehknopf links: {left_delta:+d}')
             self.emit('left_rotate', left_delta)
 
         right_delta = self.right_decoder.update(self._encoder_state(gpio, RIGHT))
         if right_delta:
-            self._debug(f'Drehknopf rechts: {right_delta:+d}')
-            self.emit('right_rotate', right_delta)
+            right_delta = -right_delta if config.RIGHT_REVERSE else right_delta
+            if self.right_pressed_at is not None:
+                # Gedrueckt drehen: eigene Funktion, Loslassen/Halten zaehlt dann nicht.
+                self.right_turned = True
+                self._debug(f'Drehknopf rechts gedrueckt: {right_delta:+d}')
+                self.emit('right_press_rotate', right_delta)
+            else:
+                self._debug(f'Drehknopf rechts: {right_delta:+d}')
+                self.emit('right_rotate', right_delta)
 
         # Links hat keine Halte-Funktion und loest deshalb sofort beim Druck aus.
         if self.left_button.update(bool((gpio >> LEFT['button']) & 1), now) == 'press':
@@ -144,16 +155,21 @@ class MCPControls:
         self._poll_right_button(bool((gpio >> RIGHT['button']) & 1), now)
 
     def _poll_right_button(self, is_high, now):
-        """Kurz = right_press (beim Loslassen), lang = right_hold (nach Ablauf)."""
+        """Kurz = right_press (beim Loslassen), lang = right_hold (nach Ablauf).
+
+        Wurde waehrend des Drueckens gedreht (right_press_rotate), loest der
+        Taster weder right_press noch right_hold aus.
+        """
         event = self.right_button.update(is_high, now)
         if event == 'press':
-            self.right_pressed_at, self.right_hold_fired = now, False
+            self.right_pressed_at, self.right_hold_fired, self.right_turned = now, False, False
         elif event == 'release':
-            if not self.right_hold_fired:
+            if not self.right_hold_fired and not self.right_turned:
                 self._debug('Taster rechts gedrueckt')
                 self.emit('right_press')
             self.right_pressed_at = None
         if (self.right_pressed_at is not None and not self.right_hold_fired
+                and not self.right_turned
                 and now - self.right_pressed_at >= config.BUTTON_HOLD_SECONDS):
             self.right_hold_fired = True
             self._debug('Taster rechts gehalten')

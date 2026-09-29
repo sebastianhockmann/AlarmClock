@@ -31,6 +31,21 @@ def browser_entries(effects):
     return entries or [(0, 'Solid')]
 
 
+def default_palette(metadata):
+    """Standardpalette eines Effekts aus WLED-fxdata ("...;...;...;01;sx=24,pal=50"), sonst 0.
+
+    Palette 0 ("Default") laesst jeden Effekt seine eigenen Farben waehlen.
+    WLED behaelt die Palette sonst ueber Effektwechsel hinweg: stand einmal
+    "Aurora" (gruen/tuerkis) drin, wurden alle folgenden Effekte gruenlastig.
+    """
+    parts = metadata.split(';') if isinstance(metadata, str) else []
+    for item in (parts[4].split(',') if len(parts) > 4 else []):
+        key, _, value = item.partition('=')
+        if key.strip() == 'pal' and value.strip().isdigit():
+            return int(value)
+    return 0
+
+
 class EffectBrowser:
     """Linker Drehknopf: die komplette WLED-Effektliste mit Live-Vorschau.
 
@@ -41,9 +56,13 @@ class EffectBrowser:
     bis dahin dient die kuratierte Bibliothek als Ersatzliste.
     """
 
-    def __init__(self, send, status=None, fallback=(), fast_seconds=None, fast_steps=None):
+    def __init__(self, send, status=None, fallback=(), fast_seconds=None, fast_steps=None,
+                 fxdata=None):
         self.send = send
         self.status = status
+        # fxdata() -> Liste der Effekt-Metadaten (/json/fxdata) fuer die Standardpaletten.
+        self.fxdata = fxdata
+        self.palettes = {}
         self.entries = list(fallback) or [(0, 'Solid')]
         self.live = False
         self.index = 0
@@ -78,6 +97,9 @@ class EffectBrowser:
                    and isinstance(segments[0], dict) else None)
         # Erst die Liste tauschen, dann den Index: ein gleichzeitiges rotate()
         # arbeitet so nie auf einem Index ausserhalb der Liste.
+        metadata = self.fxdata() if self.fxdata is not None else None
+        if isinstance(metadata, list):
+            self.palettes = {fx: default_palette(entry) for fx, entry in enumerate(metadata)}
         self.entries = [(fx, str(name)) for fx, name in enumerate(effects)]
         self.live = True
         if isinstance(current, int) and not isinstance(current, bool) and 0 <= current < len(effects):
@@ -98,7 +120,9 @@ class EffectBrowser:
         fx, name = entries[self.index]
         self.power = True
         # Ohne "bri": die am Geraet eingestellte Helligkeit bleibt erhalten.
-        self.send({'on': True, 'seg': [{'id': 0, 'fx': fx}]})
+        # "fxdef" laedt Tempo/Intensitaet des Effekts, "pal" seine Standardpalette.
+        self.send({'on': True, 'seg': [{'id': 0, 'fx': fx, 'fxdef': True,
+                                        'pal': self.palettes.get(fx, 0)}]})
         return f'{self.index + 1}/{len(entries)} {name}'
 
     def toggle_power(self):

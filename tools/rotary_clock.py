@@ -42,7 +42,7 @@ GPIOB = 0x13
 ENC1 = {"a": 14, "b": 15, "button": 13}  # PB6, PB7, PB5
 ENC2 = {"a": 0, "b": 1, "button": 2}     # PA0, PA1, PA2
 
-KEYS = ("123A", "456B", "789C", "*0#D")
+KEYS = ("DCBA", "#963", "0852", "*741")  # wie controls_mcp.KEYS (Tastenfeld gedreht)
 
 # Quadratur-Tableau: 00 -> 01 -> 11 -> 10 -> 00
 TRANSITIONS = (
@@ -151,7 +151,7 @@ def init_mcp(bus):
 
 def scan_keypad(bus, address):
     """Wandelt eine 4x4-Matrix in einen Tastencode um."""
-    KEYS = ("123A", "456B", "789C", "*0#D")
+    KEYS = ("DCBA", "#963", "0852", "*741")  # wie controls_mcp.KEYS (Tastenfeld gedreht)
     rows = (0, 1, 2, 3)
     cols = (4, 5, 6, 7)
 
