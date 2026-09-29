@@ -4,10 +4,10 @@ Spielt eine Testdatei ueber das im Projekt genutzte ALSA-Geraet ab, damit
 sich Verkabelung/Kartenwahl ohne den vollen Wecker-Ablauf pruefen lassen.
 Verfuegbare Geraete auflisten: aplay -l
 
-Start (Standarddatei aus config.py, Standardgeraet):
-    .venv/bin/python audio_test.py
+Start (Standardlied aus den Einstellungen, Standardgeraet):
+    .venv/bin/python tools/audio_test.py
 Beispiel mit anderer Datei/Geraet/Lautstaerke/Dauer:
-    .venv/bin/python audio_test.py --file mp3/xmas/jingle_bells..mp3 \\
+    .venv/bin/python tools/audio_test.py --file mp3/xmas/jingle_bells..mp3 \\
         --device plughw:3,0 --volume 60 --duration 5
 Ende vor Ablauf der Dauer: Strg+C.
 """
@@ -16,14 +16,18 @@ import argparse
 import sys
 import time
 
+import sys
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))  # Projektmodule (tools/ liegt eine Ebene tiefer)
 import config
+import settings
 from audio import AudioPlayer
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__,
                                      formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("--file", default=config.DATE_SONGS[0]["file"],
+    parser.add_argument("--file", default=settings.get("music")["default_song"],
                         help="MP3-Datei, absolut oder relativ zum Projektverzeichnis")
     parser.add_argument("--device", default=config.ALSA_DEVICE,
                         help="ALSA-Geraet, z. B. plughw:3,0 (siehe aplay -l)")

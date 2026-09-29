@@ -38,6 +38,8 @@ build/
 # --- Local config overrides (falls du welche anlegst) ---
 config_local.py
 
-# Runtime settings written by the optional web UI
+# Runtime settings written by the web UI (alte Ablage im Projektstamm, siehe settings.migrate_legacy)
 settings.json
 mp3_mapping.json
+config/settings.json
+*.migrated

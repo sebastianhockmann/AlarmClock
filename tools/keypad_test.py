@@ -1,7 +1,7 @@
 """4x4-Matrix am PCF8574 testen; Ausgabe im Terminal, Ende mit Strg+C.
 
 Beispiel (Adresse und Verdrahtung zuvor pruefen):
-    .venv/bin/python keypad_test.py --address 0x20
+    .venv/bin/python tools/keypad_test.py --address 0x20
 Vorgabe: R1..R4 an P0..P3, C1..C4 an P4..P7.
 Chip-Grundlage: https://www.ti.com/lit/ds/symlink/pcf8574.pdf
 """
@@ -10,6 +10,9 @@ import argparse
 import sys
 import time
 
+import sys
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))  # Projektmodule (tools/ liegt eine Ebene tiefer)
 import config
 
 KEYS = ("123A", "456B", "789C", "*0#D")
@@ -57,7 +60,7 @@ def main():
     if set(args.rows) & set(args.cols):
         parser.error("Zeilen und Spalten muessen verschiedene Pins verwenden")
     if args.bus == config.LCD_I2C_PORT and args.address == config.LCD_ADDRESS:
-        parser.error("Diese Adresse ist in config.py bereits fuer das LCD eingetragen")
+        parser.error("Diese Adresse ist in config/hardware.json bereits fuer das LCD eingetragen")
     try:
         from smbus2 import SMBus
     except ImportError:

@@ -1,352 +1,391 @@
 # Raspberry-Pi-Wecker mit WLED
 
-## Analyse und aktueller Stand
+Lichtwecker für den Raspberry Pi: I2C-LCD (Uhrzeit + Spruch), MP3-Wiedergabe
+über ALSA (`mpg123`), WLED-LED-Streifen über HTTP, zwei Drehencoder und ein
+4×4-Tastenfeld über I2C, Weboberfläche zum Einstellen. Tasten lassen sich frei
+belegen – mit Lichteffekten, Musik, Wetter, Alexa, Home Assistant oder
+beliebigen HTTP-Aufrufen.
 
-Der Ausgangsstand war ein Weihnachtswecker mit einem GPIO-Taster, I2C-LCD,
-USB/ALSA-Audio und Servo. WLED, zwei Drehtaster und ein Tastenfeld waren noch
-nicht implementiert. Der Alarmimpuls wurde im nächsten Schleifendurchlauf
-als Alarmende interpretiert: Die Wiedergabe stoppte nach etwa 0,1 Sekunden.
+## Überblick
 
-Jetzt trennt `controller.py` Auslösung und Alarmdauer. Der Alarm bleibt bis
-zum Stoppen oder maximal `ALARM_DURATION_SECONDS` aktiv. Das Lied wird einmal
-abgespielt, der Spruch bleibt für die Alarmdauer sichtbar. Der Termin wird pro
-vollständigem Datum einmal ausgelöst; diese Sperre gilt nur bis zum Neustart.
-Ein Neustart innerhalb der Weckminute kann erneut auslösen. Verpasste Termine
-werden nicht nachgeholt. Uhrzeit und Zeitzone des Pi müssen korrekt sein.
+| Was | Wo |
+|---|---|
+| Weckzeiten (mehrere, je Wochentag) | Weboberfläche → **Wecker** |
+| Weckprogramm (Licht-Sonnenaufgang, leise startende Musik, Ende nach dem Lied, Schlummern) | Weboberfläche → **Weckprogramm** |
+| Tastenbelegung | Weboberfläche → **Tasten** |
+| MP3s, Lieder für bestimmte Tage, Rotation | Weboberfläche → **Musik** |
+| WLED-Host, Effektbibliothek | Weboberfläche → **Licht** |
+| Alexa, Home Assistant, Wetter-Ort | Weboberfläche → **Smart Home** |
+| Begrüßungstexte und Display-Licht je Uhrzeit | Weboberfläche → **Anzeige** |
+| Hardware (I2C-Adressen, ALSA-Gerät, Ports) | `config/hardware.json` (von Hand) |
 
-`audio.py` startet mpg123 im Fernsteuerungsmodus (`-R`) mit ALSA. Dadurch
-übernimmt mpg123 die Formatbehandlung auch bei unterschiedlichen Abtastraten
-und Kanalzahlen, und die Lautstärke lässt sich per `VOLUME`-Kommando über
-stdin ändern, während ein Titel läuft (`set_volume()`, rechter Drehknopf).
-`SILENCE` unterdrückt dabei den sonst sehr häufigen `@F`-Fortschritts-Spam;
-ein Hintergrund-Thread liest die `@P`-Statuszeilen für `is_playing`.
-Stoppen beendet und wartet auf den Prozess; relative Musikpfade beziehen sich
-auf das Projektverzeichnis. `lcd.py` schreibt nur geänderte Zeilen. Lange
-Sprüche laufen durch die zweite Zeile, die erste zeigt die Uhrzeit.
-Der frühere Servo und Watchdog sind nicht mehr in den Startpfad eingebunden;
-ihre alten Dateien und Hardware-Testskripte bleiben als Referenz erhalten.
+## Konfiguration: der Ordner `config/`
 
-## Konfiguration und Start
+| Datei | Inhalt | Versioniert | Wer schreibt |
+|---|---|---|---|
+| `config/hardware.json` | LCD, I2C-Adressen, Eingabemodul, ALSA-Gerät, Web-/Steuer-Port, Pfad zum Alexa-Skript, Debug | ja | von Hand, danach Neustart |
+| `config/defaults.json` | Standardwerte für alles, was die Weboberfläche ändern kann | ja | von Hand |
+| `config/effects.json` | Standard-Effektbibliothek (WLED-Zustände mit numerischer `fx`-ID) | ja | von Hand |
+| `config/settings.json` | Änderungen aus der Weboberfläche | **nein** (gitignored) | Weboberfläche |
+| `config/__init__.py` | Lädt `hardware.json` und stellt die Werte als `config.LCD_ADDRESS` usw. bereit | ja | – |
 
-Benötigt werden Python 3.9+, `mpg123`, aktiviertes I2C und die Python-Pakete
-aus `requirements.txt`. GPIOZero ist nur für den bisherigen GPIO-Taster nötig.
-Installation beispielsweise in einer eigenen Python-Umgebung:
+Regeln:
+
+- Die Weboberfläche schreibt **nur** `config/settings.json`. Objekte (z. B.
+  `wake`, `wled`) werden feldweise mit `defaults.json` zusammengeführt, Listen
+  (Wecker, Effekte, Begrüßungen) ersetzen den Standard komplett.
+  „Standard wiederherstellen“ in der Oberfläche löscht den Abschnitt wieder aus
+  `settings.json`.
+- Jeder Wert wird beim Speichern geprüft (verständliche Fehlermeldung in der
+  Oberfläche). Ist eine Datei später doch kaputt, fällt der Wecker **pro Feld**
+  auf den Standard zurück und läuft weiter.
+- Wecker und Weboberfläche lesen `defaults.json`/`settings.json`/`effects.json`
+  live (Änderungszeit wird geprüft) – **kein Neustart nötig**. Nur
+  `hardware.json` wird beim Start gelesen.
+- Adressen in `hardware.json` dürfen als Text (`"0x27"`) oder Zahl stehen.
+- Umgebungsvariablen haben Vorrang vor `hardware.json`: `ALARM_ALSA_DEVICE`,
+  `ALARM_DEBUG=0`, `ALARM_WEB_HOST`, `ALARM_WEB_PORT`; `WLED_HOST` (Rückfall
+  `WLED_URL`) ersetzt den WLED-Host aus `defaults.json`.
+
+**Umzug alter Dateien:** Beim ersten Start übernimmt der Wecker eine alte
+`settings.json` (Weckzeit, WLED) und `mp3_mapping.json` (Datum → Lied) aus dem
+Projektstamm nach `config/settings.json` und benennt die alten Dateien in
+`*.migrated` um.
+
+## Installation und Start
+
+Benötigt: Python 3.9+, `mpg123`, `aplay`, aktiviertes I2C und die Pakete aus
+`requirements.txt`.
 
 ```sh
 sudo apt install mpg123 python3-venv i2c-tools
 python3 -m venv .venv
 .venv/bin/pip install -r requirements.txt
-.venv/bin/python alarm_clock.py
+.venv/bin/python alarm_clock.py     # Wecker (braucht die Pi-Hardware)
+.venv/bin/python webserver.py       # Weboberfläche zum Entwickeln, Port 8080
 ```
 
-In `config.py` festlegen:
+Dauerbetrieb siehe [systemd + nginx](#dauerhafter-betrieb-systemd--nginx).
 
-- `ALARM_HOUR`, `ALARM_MINUTE`, `ALARM_ENABLED`, `ALARM_DURATION_SECONDS`.
-  Stunde, Minute und Aktiv-Status lassen sich auch über die Weboberfläche
-  ändern; sie überschreiben dann diese Defaults (gespeichert in `settings.json`).
-- `WEB_HOST` (Standard `0.0.0.0`), `WEB_PORT` (Standard `8080`) für die
-  Weboberfläche; überschreibbar per `ALARM_WEB_HOST`/`ALARM_WEB_PORT`.
-- `WAKE_ITEMS`: Musik und Spruch, täglich zyklisch. Mindestens zwei verschiedene
-  Dateien eintragen. Die vorhandenen Weihnachtslieder dienen als Startbibliothek.
-- `DATE_SONGS`: feste jährliche Ausnahmen. Diese haben Vorrang vor der Rotation.
-  Explizite Datumszuordnungen können Wiederholungen an benachbarten Tagen erzeugen.
-- `LCD_ADDRESS`, `LCD_I2C_PORT`, `LCD_COLS=16`, `LCD_ROWS=2`.
-- `ALSA_DEVICE`: vorhandener Standard `plughw:3,0`; mit `aplay -l` prüfen.
-  Ein stabiler ALSA-Kartenname ist besser als eine wechselnde Kartennummer.
-  Überschreiben ohne Codeänderung mit `ALARM_ALSA_DEVICE`.
-- `WLED_HOST`: Hostname oder IP des WLED-Controllers, z. B. `alarm-led.local` oder `192.168.178.50`.
-- `WLED_TIMEOUT_SECONDS`: HTTP-Timeout in Sekunden, Standard 3.
-- `WLED_ENABLED`: aktiviert/deaktiviert den Controller.
-- `ALARM_EFFECT`: optional die ID eines Effekts beim Wecken.
-  Alarmende/Stoppen beendet Audio, lässt die Lichtszene bestehen.
+## Architektur
 
-Fehlende Dateien/Decoder werden gemeldet, ein Audio-Startfehler erscheint am LCD.
-Spätere Decoder- oder ALSA-Fehler erscheinen in stderr; es gibt noch keinen
-akustischen Ersatzalarm. Das System vor Verwendung als Wecker am Gerät testen.
+Zwei Prozesse:
+
+| Prozess | Einstieg | Aufgabe |
+|---|---|---|
+| Wecker | `alarm_clock.py` | 20-ms-Hauptschleife: Wecker prüfen, Eingaben abarbeiten, LCD |
+| Weboberfläche | `webserver.py` (Flask) | Einstellungen, MP3-Verwaltung, Tests |
+
+Die Weboberfläche spielt **selbst nichts ab**. Abspielen, Tasten testen,
+Weck-Test und Lautstärke schickt sie über einen lokalen UDP-Steuerkanal
+(`ipc.py`, `127.0.0.1:8099`) an den Wecker. So gibt es genau einen Besitzer
+für Audio, LCD und WLED (früher kollidierten Web-Vorhören und Wecker am
+ALSA-Gerät). Läuft der Wecker nicht, meldet die Oberfläche das oben rechts.
+
+Module:
+
+- `config/` – Konfiguration (siehe oben), `settings.py` – Laden/Prüfen/Speichern
+  der web-editierbaren Einstellungen, Umzug alter Dateien.
+- `scheduler.py` – `AlarmScheduler` (wann welcher Wecker fällig ist, Licht-Vorlauf,
+  einmal pro Datum), nächster Wecker, Liedauswahl, Begrüßung.
+- `wake.py` – `WakeSession`: ein laufender Weckvorgang (Licht- und
+  Lautstärkerampe, Ende nach dem Lied, Schlummern).
+- `controller.py` – `ClockController`: Lebenszyklus des Weckvorgangs und alle
+  Eingabe-Ereignisse inkl. Tastenaktionen. Hardwareunabhängig, voll getestet.
+- `integrations.py` – HTTP-Aufrufe, Home Assistant, Alexa (im Hintergrund-Thread).
+- `weather.py` – Wetter von Open-Meteo fürs LCD.
+- `ipc.py` – Steuerkanal Weboberfläche → Wecker.
+- `lighting.py` – `WLEDManager` (Hintergrund-Thread, Warteschlange behält nur
+  den neuesten Befehl), `EffectBrowser` (alle Geräteeffekte am linken Knopf).
+- `audio.py` – `mpg123 -R`; Lautstärke live, erkennt Liedende.
+- `controls_mcp.py` – Drehencoder (MCP23017) und Tastenfeld (PCF8574).
+- `lcd.py`, `chime.py` (Klickton), `button.py` (alter GPIO-Taster, aus).
+- `tools/` – Hardware-Testskripte (`encoder_test.py`, `keypad_test.py`,
+  `wled_effect_list.py`, …), nicht Teil der Tests. Aufruf aus dem Projektordner,
+  z. B. `.venv/bin/python tools/wled_effect_list.py --search sun`.
+
+Grundsätze: Module importieren keine Hardware (LCD erst in `main()`);
+Netzwerk und I2C laufen in Hintergrund-Threads, nur die Hauptschleife ändert
+LCD und Zustand; jeder Hardware-/Netzwerkfehler wird gemeldet, der Wecker läuft
+weiter.
+
+## Wecker und Weckprogramm
+
+**Wecker:** beliebig viele, jeweils mit Uhrzeit, Name und Wochentagen
+(z. B. „Schule“ Mo–Fr 06:15, „Wochenende“ Sa+So 08:00). Der Schalter
+„Wecker aktiv“ in der Übersicht pausiert alle (Urlaub). Jeder Wecker löst pro
+Datum einmal aus; die Sperre gilt bis zum Neustart – ein Neustart innerhalb
+der Weckminute kann erneut auslösen, verpasste Termine werden nicht nachgeholt.
+
+**Weckprogramm** (gilt für alle Wecker):
+
+1. *Licht-Vorlauf* (optional, 0–60 min vor der Weckzeit): der gewählte Effekt
+   startet mit „Helligkeit Start“ und wird über „Heller werden über“ Minuten
+   bis „Helligkeit Ende“ heller. Alle 2 s geht ein neuer Helligkeitswert mit
+   WLED-Überblendung (`tt`) raus, dadurch wirkt es weich. Jeder Schritt enthält
+   den vollen Effektzustand, ein verlorenes Paket schadet also nicht.
+   Standard-Effekt „Morgenlicht“ (warmes Orange).
+2. *Musik* zur Weckzeit: Tageslied, Zufallssong oder keine (nur Licht).
+   Beginnt mit „Lautstärke Start“ und wird über „Lauter werden über“ Sekunden
+   bis „Lautstärke Ende“ lauter. Dreht man am rechten Knopf, endet die Rampe –
+   die Hand hat Vorrang.
+3. *Ende:* wenn das Lied vorbei ist (oder: Lied wiederholen), spätestens nach
+   „Spätestens aus nach“ Minuten. Danach wird das Licht ausgeblendet oder bleibt
+   an („Licht danach“).
+4. *Schlummern:* Standardmäßig bedeutet **jede Taste** des Tastenfelds während
+   des Weckens „Schlummern“ (9 min); das LCD zählt herunter, das Licht bleibt an,
+   danach startet die Musik neu. Der **rechte Knopf** beendet den Wecker.
+   Drückt man ihn schon im Licht-Vorlauf, fällt die Musik für heute aus.
+
+Der Ablauf wird in der Oberfläche als Zeitleiste angezeigt; „Jetzt testen“
+startet das Programm sofort (ohne Vorlauf).
+
+**Liedauswahl „Tageslied“:** konkretes Datum (`2026-12-24`) → jährliches Datum
+(`12-24`) → tägliche Rotation → Standardlied. „Zufallssong“ wählt aus allen
+MP3s im Ordner `mp3/` (inkl. Unterordnern). Der Spruch erscheint im LCD.
+
+## Bedienung am Gerät
+
+| Element | Funktion |
+|---|---|
+| Links drehen | alle WLED-Effekte live durchblättern (`12/187 Aurora`); schnell drehen springt (`effect_fast_*` in `hardware.json`) |
+| Links drücken | Licht an/aus |
+| Rechts drehen | Lautstärke (Schrittweite `audio.volume_step`) |
+| Rechts drücken | Wecker aus / Musik an/aus (Tageslied) |
+| Rechts 2 s halten | „Alles normal“: Musik aus, Licht an, Display wieder automatisch |
+| Tastenfeld | frei belegbar (Weboberfläche → Tasten), mit Klickton |
+
+### Tastenaktionen
+
+| Typ | Wirkung |
+|---|---|
+| Lichteffekt | Effekt aus der Bibliothek an WLED |
+| Licht an/aus | umschalten, an oder aus |
+| Musik | Zufallssong, Tageslied, an/aus, stopp |
+| Wetter im Display | Wetterbericht in Zeile 2 (Open-Meteo) |
+| Display an/aus | LCD-Hintergrundlicht manuell |
+| Schlummern | wie oben |
+| Wecker an/aus | alle Wecker pausieren/aktivieren |
+| Weckprogramm testen | Weckprogramm sofort starten |
+| Alexa (Sprachbefehl) | Befehl an ein bestimmtes Echo, siehe unten |
+| HTTP-Aufruf | GET/POST an eine URL (Alexa-Routine-Trigger, Voice Monkey, IFTTT, HA-Webhook …) |
+| Home Assistant | Service-Aufruf, z. B. `light.toggle` auf `light.deckenlampe` |
+
+Jede Aktion hat einen optionalen Anzeige-Text fürs LCD. Externe Aktionen laufen
+im Hintergrund; schlagen sie fehl, erscheint die Fehlermeldung im LCD. In der
+Oberfläche testet „Am Wecker testen“ die Taste wie echt gedrückt, „Direkt
+testen“ ruft externe Aktionen aus der Oberfläche auf und zeigt das Ergebnis.
+
+**Vorschlag für die Belegung (Standard):**
+
+```
+ 1 Solid       2 Breathe      3 Colorloop    A Deckenlampe (Smart Home)
+ 4 Rainbow     5 Theater      6 Chase Rainb. B Amazon Music (Alexa)
+ 7 Candle      8 Fire 2012    9 Twinklefox   C Wetter im Display
+ * Zufallssong 0 Licht aus    # Musik-Licht  D Display an/aus
+```
+
+Die Zahlen bleiben Lieblingseffekte (leicht zu merken für Kinder), die
+Buchstabenspalte ist „Haus & Info“. `#` ist ein Effekt, der aufs Mikrofon
+reagiert – zusammen mit `*` (Zufallssong) ergibt das eine kleine Disco.
+Weitere sinnvolle Belegungen: „Einschlaflicht“ (Candle, geringe Helligkeit)
+plus Alexa-Routine „Einschlafgeräusche“, „Wecker an/aus“ fürs Wochenende,
+„Alexa → Wetterbericht“ statt der LCD-Anzeige.
+
+## Alexa
+
+Echo-Geräte haben **keine lokale Schnittstelle**. Eine IP-Adresse hilft deshalb
+nicht – gesteuert wird immer über die Amazon-Cloud, und das Zielgerät wird über
+seinen **Namen** aus der Alexa-App gewählt (z. B. „Echo Kinderzimmer“). So
+unterscheidet man auch die beiden Alexas.
+
+Wer trotzdem die IP braucht (z. B. für eine feste DHCP-Zuweisung): Alexa-App →
+Geräte → Echo & Alexa → Gerät → Info zeigt die MAC-Adresse; in der
+Router-Oberfläche (Fritzbox: Heimnetz → Netzwerk) steht die zugehörige IP.
+Auf dem Pi listet `ip neigh` bzw. `sudo nmap -sn 10.150.1.0/24` die Geräte im
+Netz (Hersteller „Amazon Technologies“).
+
+Drei Wege, per Taste Alexa zu steuern:
+
+1. **HTTP-Aufruf → Alexa-Routine** (empfohlen, kein Login auf dem Pi):
+   Skill „URL Routine Trigger“ oder „Voice Monkey“ in der Alexa-App aktivieren,
+   dort einen Auslöser anlegen (erscheint in der App als Gerät/Türklingel).
+   Dann in der Alexa-App eine Routine bauen: *Wenn* Auslöser → *Aktion* z. B.
+   „Musik: Amazon Music, Playlist X auf Echo Kinderzimmer“, „Smart Home:
+   Deckenlampe an“ oder „Wetter“. Die Trigger-URL bei der Taste als
+   HTTP-Aufruf (GET) eintragen. Die URL enthält ein Geheimnis – nicht teilen.
+2. **Alexa (Sprachbefehl)** über
+   [alexa-remote-control](https://github.com/thorsten-gehrig/alexa-remote-control):
+   schickt Befehle wie gesprochen an ein bestimmtes Echo („spiele Amazon Music“,
+   „schalte die Deckenlampe an“), außerdem Routinen per Name, Vorlesen und
+   Wetterbericht. Einrichtung:
+   ```sh
+   cd /home/pi && git clone https://github.com/thorsten-gehrig/alexa-remote-control.git
+   sudo apt install jq
+   # Refresh-Token einmalig mit alexa-cookie-cli erzeugen (siehe README des Projekts)
+   # und oben im Skript eintragen: REFRESH_TOKEN, AMAZON='amazon.de',
+   # ALEXA='alexa.amazon.de', LANGUAGE='de-DE'
+   alexa-remote-control/alexa_remote_control.sh -a          # Geräte auflisten
+   alexa-remote-control/alexa_remote_control.sh -d "Echo Kinderzimmer" -e speak:"Hallo"
+   ```
+   Pfad steht in `config/hardware.json` → `alexa.script` (absichtlich nicht in
+   der Weboberfläche). „Geräte abfragen“ unter Smart Home füllt die Namensliste.
+   Das Token ist ein Amazon-Zugang – die Datei gut schützen (`chmod 600`).
+3. **Home Assistant** mit der Integration „Alexa Media Player“ (HACS) –
+   dann ist jedes Echo ein `media_player` und die Deckenlampe ein `light`.
+
+**Skills testen:** Routinen in der Alexa-App über ▶ („Abspielen“) direkt starten;
+die Trigger-URL mit `curl "https://…"` aufrufen; im Terminal
+`alexa_remote_control.sh -d "…" -e textcommand:"wie spät ist es"`; eigene
+Skills in der Alexa Developer Console im Reiter „Test“. In der Weboberfläche
+löst „Direkt testen“ die Aktion aus und zeigt HTTP-Status bzw. Fehlermeldung.
+
+## Mikrofon am ESP32 (WLED Audio Reactive)
+
+Der verbaute Controller (WLED 16.0.1, ESP32) hat den Usermod **AudioReactive**
+bereits aktiv, mit einem I2S-Mikrofon (Typ „Generic I2S“, Pins SD 33, WS 25,
+SCK 26, AGC an). Einstellen in der WLED-Oberfläche unter *Config → Usermods →
+AudioReactive*: Squelch (Rauschschwelle, höher = reagiert erst bei lauteren
+Geräuschen), Gain bzw. AGC, Pins. In der Info-Seite zeigt „Audio Source … peak“,
+ob Ton ankommt.
+
+Nutzen: Effekte mit Tonreaktion wählen. In der Weboberfläche unter **Licht →
+Effektliste vom WLED laden** sind sie markiert (♪ = Lautstärke, ♫ = Frequenzen),
+z. B. Gravimeter (132), Juggles (130), Puddlepeak (144), Ripple Peak (148),
+Freqmap (155), DJ Light (159), Waterfall (140). 2D-Effekte (GEQ, Waverly …)
+passen nicht zu einem einzelnen Streifen. Der Effekt „Musik (Mikrofon)“ in der
+Bibliothek (Taste `#`) nutzt Gravimeter. Das Mikrofon hört die Musik aus dem
+Lautsprecher des Weckers einfach mit – eine Verbindung zwischen Pi und WLED für
+Audio ist nicht nötig. Alternativ könnte der Pi Audio-Sync per UDP (Port 11988)
+senden; das ist nicht umgesetzt.
+
+## Wetter
+
+Unter **Smart Home → Wetter** den Ort suchen (Open-Meteo, kostenlos, ohne
+Schlüssel), übernehmen, speichern, „Wetter abrufen“ zum Prüfen. Danach zeigt
+eine Taste mit „Wetter im Display“ z. B.
+`Jetzt 12C, heute 9-19C, Regenrisiko 40%, wolkig`, und im Weckprogramm kann
+„Wetter im Display“ den Wetterbericht an den Weckspruch anhängen. Soll der
+Wetterbericht **gesprochen** werden, eine Alexa-Aktion „Wetterbericht“ nehmen
+(oder eine Routine mit Wetter per HTTP-Trigger) – Alexa kennt den Ort aus der
+App und klingt besser als eine Sprachsynthese auf dem Pi.
 
 ## WLED
 
-Der AlarmClock kann einen WLED-Controller über Hostname oder IP ansprechen.
+Host als Hostname oder IP (`wled.local`, `alarm-led.local`, `10.150.1.50`),
+optional mit Port, ohne Pfad. `.local`-Namen gehen per mDNS, wenn Pi und WLED
+im selben Netz sind. Timeout 0,5–30 s. Lichtbefehle laufen im Hintergrund und
+blockieren nie Audio, Display oder Eingaben; bei vielen Befehlen bleibt nur der
+neueste in der Warteschlange, es gibt keine Wiederholungen.
 
-Empfohlen:
-
-- `alarm-led.local`
-
-Alternativ:
-
-- `wled.local`
-- `192.168.x.x`
-
-`.local`-Hostnamen funktionieren per mDNS, wenn Raspberry Pi und WLED im selben lokalen Netzwerk sind. Der Pi löst den Namen über das Betriebssystem auf; keine eigene mDNS-Implementierung oder harte IP-Kodierung ist nötig.
-
-Die Defaults stehen ausschließlich in `config.py`: aktiv, `wled.local`, 3 Sekunden.
-Die bestehende `settings.json` überschreibt diese Werte im Abschnitt `wled`:
-
-```json
-{
-  "hour": 6,
-  "minute": 15,
-  "wled": {
-    "enabled": true,
-    "host": "alarm-led.local",
-    "timeout": 3
-  }
-}
-```
-
-`WLED_HOST` aus der Umgebung kann den Default überschreiben; das bisherige
-`WLED_URL` wird als Rückfall für den Host weiterhin eingelesen. Gespeicherte
-Einstellungen haben Vorrang. `http://` ist optional, ein optionaler Port bleibt
-erhalten. API-Pfade werden ausschließlich im `WLEDManager` ergänzt.
-Der Timeout darf 0,5–30 Sekunden betragen. Er begrenzt Socket-Operationen;
-die Dauer der Namensauflösung bestimmt das Betriebssystem. Lichtbefehle laufen
-deshalb im Hintergrund, ohne Audio, Display oder Eingaben zu blockieren.
-Es gibt keine automatischen Wiederholungen.
-
-In der Admin-Oberfläche unter **WLED Controller** Aktiv, Hostname/IP und Timeout
-ändern und **Speichern** drücken. Danach **Verbindung testen** wählen: Der Test
-verwendet die gespeicherten Werte und aktualisiert den Status. Vor einem Test
-steht dort „nicht geprüft“. Alternativ liefert `GET /api/wled/test` JSON mit
-`success`, `host` und bei Fehlern `error`. Deaktiviert bedeutet: keine HTTP-Anfrage.
-Der Wecker liest die Einstellungen vor jeder Anfrage neu; kein Neustart ist nötig.
-Eine bereits laufende Anfrage verwendet noch die vorherigen Werte.
-
-Manuell auf dem Raspberry Pi prüfen (der Name muss in WLED konfiguriert sein):
+Prüfen auf dem Pi:
 
 ```sh
-getent hosts alarm-led.local
-curl --max-time 3 http://alarm-led.local/json
-curl --max-time 5 http://127.0.0.1:8080/api/wled/test
+getent hosts wled.local
+curl --max-time 3 http://wled.local/json/info
 ```
 
-Falls `getent` keinen Eintrag liefert, mDNS-Unterstützung des Pi (z. B. Avahi/NSS)
-und das gemeinsame lokale Netzwerk prüfen.
-
-`lighting.WLEDManager()` verwendet die zentrale Konfiguration. `send(state)`,
-`set_power(True)`, `set_brightness(80)` und `activate_preset(3)` stellen Befehle
-in die begrenzte Warteschlange; sie bestätigen keine erfolgreiche Zustellung.
-`get_status()` und `is_available()` fragen synchron ab und gehören nicht in die
-Wecker-Hauptschleife. Damit ist die Schnittstelle für spätere Szenen vorhanden;
-eine neue Szenenlogik ist nicht enthalten. `WLEDClient` bleibt nur als dünner
-Kompatibilitätsadapter bestehen und hat keine eigene HTTP-Implementierung.
-
-## Effektbibliothek und Bedienung
-
-`effects.json` enthält eine geordnete Liste mit eindeutiger `id`, `name`, optionaler
-`key` und einem WLED-JSON-`state`. Beispiele: Warmweiss, Musik-Preset 1 und Aus.
-Preset 1 muss am WLED-Gerät selbst eingerichtet werden. Die Bibliothek wird beim
-Start gelesen. Effekte beziehen sich im Warmweiss-Beispiel auf Segment 0.
-
-Jedes Bedienelement hat genau einen Zuständigkeitsbereich: der linke Drehknopf
-das Licht, der rechte den Ton, das Tastenfeld die kuratierten Lieblingseffekte
-und (Tasten A/B/C) Smart-Home-Kurzbefehle.
-
-- **Links drehen – Licht wählen.** Blättert durch *alle* Effekte des WLED-Geräts
-  und schaltet den Streifen sofort um (Live-Vorschau, kein Bestätigen nötig).
-  Das LCD zeigt `12/187 Aurora`. Zwei Drehschritte innerhalb von
-  `config.EFFECT_FAST_SECONDS` springen um `config.EFFECT_FAST_STEPS` Einträge,
-  damit auch ~180 Effekte mit einem Rastencoder erreichbar bleiben: schnell
-  drehen sucht grob, langsam drehen wählt genau.
-- **Links drücken – Streifen an/aus.**
-- **Tastenfeld:** Eintrag aus `effects.json` über seine `key` direkt aktivieren.
-  Jeder Tastendruck gibt zusätzlich einen kurzen Klick aus (`chime.py`, per
-  `aplay` unabhängig vom laufenden Alarm/Musik-Ton). Die Tasten `A`/`B`/`C`
-  sind keine Lichteffekte mehr, sondern lösen über `config.SMART_HOME_ACTIONS`
-  eine Home-Assistant-Aktion aus (Deckenlampe, zwei Alexa-Routinen) – die
-  Effekte Aurora/Fireworks/Lightning bleiben über den linken Drehknopf
-  erreichbar. Ohne gesetzte `config.HOME_ASSISTANT_URL` wird die Aktion nur
-  geloggt; die eigentliche Anbindung (Home Assistant vs. Fauxmo) steht noch
-  aus, siehe `smart_home.py`.
-- **Rechts drehen – Lautstärke** in Schritten von `config.VOLUME_STEP` (Standard 5 %).
-- **Rechts kurz drücken – Ton an/aus.** Läuft ein Alarm, stoppt er. Läuft Musik,
-  stoppt sie. Sonst startet das Tageslied. Der kurze Druck meldet beim Loslassen,
-  damit er vom langen unterscheidbar ist.
-- **Rechts lang drücken (`config.BUTTON_HOLD_SECONDS`, Standard 2 s) – „Alles
-  normal".** Musik aus, Licht an, Display zurück auf die automatische Steuerung
-  über `config.GREETINGS`. Die Fluchttaste, wenn man sich verklickt hat.
-
-Die Effektnamen für den linken Knopf holt `EffectBrowser.refresh()` beim Start
-in einem Hintergrund-Thread vom Gerät (`/json` → `effects`); die Hauptschleife
-blockiert dabei nie. Antwortet das Gerät nicht, dient die kuratierte Liste aus
-`effects.json` als Ersatz – Einträge ohne `seg[0].fx` (z. B. „Licht aus") können
-dann nicht vorgeschaut werden und fehlen in dieser Ersatzliste.
-
-WLED-Anfragen laufen in einem eigenen Thread mit Timeout. Bei vielen Befehlen
-bleibt nur der neueste noch nicht gesendete Zustand in der Warteschlange.
-Verbindungsfehler werden protokolliert; sie unterbrechen den Alarm
-nicht. Der angezeigte Effektname ist eine Auswahl, keine Empfangsbestätigung.
+**Effektbibliothek:** Effekte verweisen über die numerische WLED-Effekt-ID
+(`seg[0].fx`) auf das Gerät, nicht über den Namen – die Bibliothek funktioniert
+also auch, wenn WLED beim Start nicht erreichbar ist. Die passende ID zeigt die
+Weboberfläche (Effektliste vom WLED laden) oder
+`.venv/bin/python tools/wled_effect_list.py --search aurora`. In der Oberfläche
+lassen sich Name, Effekt-Nr., Helligkeit und Farbe ändern, mit 👁 direkt am
+Streifen ansehen und unter „JSON“ beliebige WLED-Zustände eintragen
+(Paletten, Presets `{"ps": 3}` …). Effekte, die eine Taste oder das
+Weckprogramm nutzt, lassen sich nicht löschen.
 
 ## I2C-Anbindung: Drehencoder und Tastenfeld
 
-`controls_mcp.py` implementiert `INPUT_MODULE` für die tatsächlich verbaute
-Hardware, per `i2cdetect -y 1` und `rotary_clock.py` vermessen:
+`controls_mcp.py` (per `inputs.module` in `hardware.json`), vermessen mit
+`i2cdetect -y 1` und `tools/rotary_clock.py`:
 
-- Tastenfeld (PCF8574) auf `0x20` (`config.KEYPAD_ADDRESS`): Zeilen P0–P3, Spalten P4–P7.
-- MCP23017 auf `0x21` (`config.MCP23017_ADDRESS`): linker Encoder A/B auf PB6/PB7,
-  Taster auf PB5; rechter Encoder A/B auf PA0/PA1, Taster auf PA2.
-- LCD (PCF8574) auf `0x27` (`config.LCD_ADDRESS`), gemeinsamer Bus `config.INPUT_I2C_PORT`.
+- Tastenfeld (PCF8574) `0x20`: Zeilen P0–P3, Spalten P4–P7.
+- MCP23017 `0x21`: linker Encoder A/B PB6/PB7, Taster PB5; rechter Encoder
+  A/B PA0/PA1, Taster PA2.
+- LCD (PCF8574) `0x27`, gemeinsamer Bus 1.
 
-Weichen Adressen/Verkabelung ab, `config.MCP23017_ADDRESS`/`KEYPAD_ADDRESS`
-anpassen oder mit `i2cdetect -y 1` neu bestimmen. Ein eigener Polling-Thread
-scannt Encoder (Quadratur, Schwelle 2 Flanken je Schritt) und Tastenfeld
-(zeilenweise, entprellt); `emit()` legt Ereignisse nur in die Warteschlange,
-LCD und Bedienzustand ändert ausschließlich die Hauptschleife. Schlägt die
-Initialisierung fehl (I2C-Fehler, falsche Adresse), läuft der Wecker ohne
-Tastenfeld/Encoder weiter – analog zum alten GPIO-Taster.
-
-Eigene Schnittstelle für einen anderen Treiber, weiterhin über `INPUT_MODULE`:
-
-```python
-# In einem eigenen, per INPUT_MODULE benannten Python-Modul:
-def open_controls(emit):
-    # Hardware initialisieren und Eingaben entprellen.
-    # emit("left_rotate", +1) / emit("left_rotate", -1)
-    # emit("left_press")
-    # emit("key", "1")
-    # emit("right_press") / emit("right_hold") / emit("right_rotate", +1)
-    # Objekt zurückgeben, dessen close() Threads und Buszugriff beendet.
-    ...
-```
-
-Ohne `INPUT_MODULE` (`= None`) bleibt der alte GPIO17-Taster aktiv, falls
-`LEGACY_BUTTON_ENABLED = True`: Einfachklick schaltet Hintergrundlicht oder
-stoppt einen aktiven Alarm, Doppelklick spielt das Tageslied, Dreifachklick
-stoppt Audio.
+Ein eigener Polling-Thread scannt Encoder und Tastenfeld; `emit()` legt nur
+Ereignisse in die Warteschlange. Schlägt die Initialisierung fehl, läuft der
+Wecker ohne Tastenfeld/Encoder weiter. Ein eigenes Eingabemodul muss
+`open_controls(emit)` bereitstellen und ein Objekt mit `close()` liefern;
+Ereignisse: `left_rotate` (±1), `left_press`, `key` ("1"…"D"),
+`right_rotate`, `right_press`, `right_hold`.
 
 ## Debug-Ausgaben
 
-`config.DEBUG` (Standard an, mit `ALARM_DEBUG=0` abschaltbar) gibt auf der
-Konsole jede ausgelöste Aktion aus, um Eingabe- und WLED-Probleme live zu
-verfolgen:
+`debug` in `hardware.json` (oder `ALARM_DEBUG=0`) schaltet Konsolenausgaben:
+`[Eingabe]` Rohereignisse aus `controls_mcp.py`, `[Event]` Ereignis in der
+Warteschlange, `[Controller]` abgeleitete Aktion, `[WLED] Sende an …` das
+gesendete JSON, `[Aktion]` Ergebnis externer Aktionen. Kommt bei Tastendruck
+nur `[Eingabe]`/`[Event]` und keine Aktion, liegt es an der Belegung; bleibt
+auch `[Eingabe]` aus, an Verkabelung/I2C-Adresse.
 
-- `[Event] key '3'` – vom Eingabemodul in die Warteschlange gelegtes Ereignis.
-- `[Eingabe] ...` – Rohereignisse aus `controls_mcp.py` (Tastendruck, Drehschritt).
-- `[Controller] ...` – daraus abgeleitete Aktion (Effekt, Licht, Alarm gestoppt).
-- `[WLED] Sende an <host>: {...}` – tatsächlich an WLED geschicktes JSON.
+## Weboberfläche
 
-Bleibt bei Tastendruck z. B. nur `[Event]`/`[Eingabe]` sichtbar, aber kein
-`[WLED]`, liegt es an der Effektauswahl (`effects.json`, `key`-Zuordnung);
-bleibt auch `[Eingabe]` aus, liegt es an Verkabelung/I2C-Adresse.
+`http://<Pi-IP>/` (über nginx) bzw. beim Entwickeln `http://<Pi-IP>:8080`.
+**Keine Anmeldung** – nur im vertrauenswürdigen Heimnetz betreiben, keine
+Portweiterleitung ins Internet. Der Home-Assistant-Token wird nie an den
+Browser zurückgegeben (leeres Feld = Token behalten); Trigger-URLs sind
+dagegen sichtbar.
 
-## Musikreaktion
+MP3-Upload: mehrere Dateien auf einmal, bereinigte Dateinamen, max. 32 MiB pro
+Anfrage (`web.max_upload_mb`, passend zu `client_max_body_size` in nginx),
+keine Überschreibung. ▶ spielt am Wecker, 🎧 im Browser. Dateien, die als
+Standardlied, Datum oder Rotation verwendet werden, lassen sich nicht löschen.
 
-WLED-Lichtsteuerung erfolgt über HTTP/WLAN, nicht über den lokalen I2C-Bus.
-Audio-Reaktivität braucht eine passende WLED-Firmware und eine Audioquelle.
-Möglich sind unter anderem Mikrofon/Line-in am Controller oder Audio-Sync.
-USB-Lautsprecher allein senden keine Audiodaten an WLED.
-Das Musik-Preset aktiviert nur einen vorher eingerichteten Effekt; diese Software
-implementiert noch keine Audioanalyse oder Audio-Sync-Übertragung vom Pi.
-Benötigt werden Controller-Modell, Firmwareversion und die Entscheidung für
-Mikrofon oder digitale Audioübertragung.
-
-Offizielle Grundlagen:
-[WLED JSON API](https://kno.wled.ge/interfaces/json-api/),
-[WLED Audio Reactive](https://kno.wled.ge/advanced/audio-reactive/).
-
-## Optionale Weboberfläche
-
-Start: `.venv/bin/python webserver.py`, standardmäßig erreichbar im gesamten
-lokalen Netzwerk unter `http://<Pi-IP>:8080` (z. B. `http://raspberrypi.local:8080`),
-da der Server an `0.0.0.0` bindet (`WEB_HOST`/`WEB_PORT` in `config.py`, per
-`ALARM_WEB_HOST`/`ALARM_WEB_PORT` überschreibbar).
-**Die Oberfläche hat keine Anmeldung** und darf deshalb nur in einem
-vertrauenswürdigen Heimnetz laufen – keine Portweiterleitung ins Internet ohne
-zusätzlichen Schutz (z. B. Reverse-Proxy mit Login/HTTPS oder VPN).
-Weckzeit **und Aktiv-Status** werden atomar in `settings.json` gespeichert und
-vom laufenden Wecker übernommen. Datum, Datei und Spruch landen in
-`mp3_mapping.json` und lassen sich in der Tabelle auch wieder löschen.
-Priorität: konkretes Datum, jährliches Datum aus Webzuordnung, `DATE_SONGS`,
-Rotation, Standardlied. MP3-Unterordner werden aufgelistet.
-Uploads akzeptieren bereinigte MP3-Dateinamen, maximal 32 MiB, und überschreiben
-keine vorhandenen Dateien. Eine Dateiendung ist keine Audioformatprüfung.
-Neue Songs einfach über das Upload-Formular in den `mp3`-Ordner laden; sie
-stehen danach sofort zum Abspielen und für Datumszuordnungen zur Verfügung.
-
-Web-Vorhören läuft in einem eigenen Audioprozess: Web-Stopp stoppt nur das
-Vorhören, der Hardwaretaster stoppt den Wecker. Gleichzeitiges Vorhören und
-Wecken kann je nach ALSA-Gerät kollidieren. Eine gemeinsame Laufzeitsteuerung
-für beide Prozesse ist noch nicht vorhanden.
+JSON-API (für eigene Skripte): `GET /api/state`,
+`PUT|DELETE /api/settings/<bereich>` (`alarms`, `alarms_enabled`, `wake`,
+`music`, `keys`, `effects`, `wled`, `greetings`, `home_assistant`, `alexa`,
+`weather`), `POST /api/control` (`{"event": "play_random"}`, `play_today`,
+`play_file`, `stop_audio`, `wake_test`, `wake_stop`, `key`, `volume`),
+`POST /api/action/test`, `GET /api/wled/test`, `GET /api/wled/effects`,
+`GET /api/weather/test`, `GET /api/weather/search?q=Ort`.
 
 ## Dauerhafter Betrieb (systemd + nginx)
 
-Für Dauerbetrieb (Start beim Booten, automatischer Neustart bei Absturz) laufen
-Wecker und Weboberfläche als systemd-Services; nginx macht die Weboberfläche im
-LAN auf Port 80 erreichbar, während die Flask-App selbst nur an `127.0.0.1`
-bindet. Die fertigen Unit-/Config-Dateien liegen in `systemd/` und `nginx/`.
-
 ```sh
-# Waitress ist bereits in requirements.txt enthalten:
 .venv/bin/pip install -r requirements.txt
-
-# Systemd-Services installieren und aktivieren:
 sudo cp systemd/alarmclock.service systemd/alarmclock-web.service /etc/systemd/system/
 sudo systemctl daemon-reload
 sudo systemctl enable --now alarmclock.service alarmclock-web.service
 
-# nginx installieren und als Reverse-Proxy vor die Weboberfläche schalten:
 sudo apt install nginx
 sudo cp nginx/alarmclock.conf /etc/nginx/sites-available/alarmclock
 sudo ln -s /etc/nginx/sites-available/alarmclock /etc/nginx/sites-enabled/
 sudo rm -f /etc/nginx/sites-enabled/default
-sudo nginx -t
-sudo systemctl reload nginx
+sudo nginx -t && sudo systemctl reload nginx
 ```
 
-Danach ist die Oberfläche unter `http://<Pi-IP>/` (Port 80, ohne `:8080`) im
-LAN erreichbar. `alarmclock-web.service` startet `waitress-serve` explizit mit
-`--host=127.0.0.1`, damit die App selbst nur lokal erreichbar ist und
-ausschließlich nginx nach außen zeigt.
-
-Nützliche Befehle:
+`alarmclock-web.service` startet `waitress-serve --host=127.0.0.1`, nach außen
+zeigt nur nginx (Port 80).
 
 ```sh
-sudo systemctl status alarmclock.service alarmclock-web.service
-journalctl -u alarmclock.service -f      # laufende Debug-Ausgaben (config.DEBUG) live verfolgen
+sudo systemctl restart alarmclock.service alarmclock-web.service   # nach Code-Änderungen
+journalctl -u alarmclock.service -f
 journalctl -u alarmclock-web.service -f
-sudo systemctl restart alarmclock.service alarmclock-web.service
 ```
 
-Änderungen an `config.py`/den Unit-Dateien erfordern `sudo systemctl daemon-reload`
-(nur bei Änderungen an der `.service`-Datei) und `sudo systemctl restart ...`.
-Weiterhin gilt: keine Portweiterheitung dieses Ports ins Internet ohne
-zusätzlichen Schutz (Anmeldung, TLS, VPN) – die Oberfläche ist bewusst nur
-fürs Heimnetz gedacht.
+Änderungen an `config/hardware.json` brauchen einen Neustart der Dienste,
+alles aus der Weboberfläche nicht.
 
 ## Prüfung
 
 ```sh
-python3 -m unittest discover -s tests -v
-python3 -m compileall -q alarm_clock.py audio.py button.py config.py controller.py controls_mcp.py lcd.py lighting.py scheduler.py settings.py webserver.py
+.venv/bin/python -m unittest discover -s tests -v
+.venv/bin/python -m compileall -q *.py config tools
 ```
 
-Tests prüfen Alarmdauer, Stoppen, Monatswechsel, Liedrotation, vorhandene
-Musikdateien, Audio-Prozessende und die WLED-/Effektschnittstelle mit Mocks.
-Die Hardware-Testskripte im Projektstamm werden dabei absichtlich nicht gestartet.
-
-Die WLED-Tests mocken HTTP vollständig und prüfen zusätzlich DNS-/Verbindungsfehler,
-Timeouts, ungültige API-Antworten, Deaktivierung, Presets, die begrenzte
-Warteschlange, Live-Konfigurationswechsel und Speichern/Testen über die Web-API.
+Die Tests brauchen keine Hardware: Einstellungen werden in ein
+Temp-Verzeichnis umgeleitet, Audio/WLED/HTTP/Alexa gemockt. Nebenbei prüfen
+sie, dass `config/defaults.json` und `config/effects.json` gültig sind und alle
+eingetragenen MP3s existieren.
 
 ### GPIO-Taster: fehlender Treiber beim Start
 
-Meldungen wie `No module named 'lgpio'` und anschließend
-`/sys/class/gpio/gpio17/value` / `Invalid argument` betreffen den alten GPIO17-Taster.
-Die Anwendung meldet dessen Initialisierungsfehler und läuft ohne diesen Taster
-weiter. Damit stehen seine Klickaktionen, insbesondere manuelles Alarmstoppen,
-nicht zur Verfügung; die konfigurierte Alarmdauer gilt weiterhin.
-
-Wenn kein alter GPIO17-Taster angeschlossen ist, in `config.py`
-`LEGACY_BUTTON_ENABLED = False` setzen. Für einen angeschlossenen Taster muss ein
-passender GPIO-Treiber in der verwendeten Python-Umgebung verfügbar sein.
-GPIOZero unterstützt `lgpio` auf allen Pi-Modellen:
-[GPIOZero Pin-Factories](https://gpiozero.readthedocs.io/en/stable/api_pins.html).
-In der aktivierten virtuellen Umgebung beispielsweise:
-
-```sh
-python3 -m pip install lgpio
-GPIOZERO_PIN_FACTORY=lgpio python3 alarm_clock.py
-```
-
-Die Projekt-venv hat derzeit keinen Zugriff auf systemweit installierte
-Python-Pakete (`include-system-site-packages = false`); eine reine Installation
-über apt macht den Treiber daher nicht automatisch in dieser venv verfügbar.
+Der alte GPIO17-Taster ist abgeschaltet (`inputs.legacy_button_enabled`).
+Wird er eingeschaltet und fehlt ein GPIO-Treiber (`No module named 'lgpio'`,
+`/sys/class/gpio/gpio17/value: Invalid argument`), meldet der Wecker das und
+läuft ohne Taster weiter. Abhilfe: `.venv/bin/pip install lgpio` und
+`GPIOZERO_PIN_FACTORY=lgpio`
+([GPIOZero Pin-Factories](https://gpiozero.readthedocs.io/en/stable/api_pins.html)).

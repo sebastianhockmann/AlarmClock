@@ -1,8 +1,29 @@
+"""Feste Konfiguration aus config/hardware.json plus Pfade der JSON-Dateien.
+
+Nur Hardware- und Betriebswerte werden hier als Konstanten bereitgestellt;
+sie gelten ab Programmstart. Alles, was die Weboberflaeche aendern kann
+(Wecker, Weckprogramm, Tasten, WLED, ...), liest settings.py live aus
+defaults.json + settings.json.
+
+Umgebungsvariablen haben Vorrang vor hardware.json:
+ALARM_ALSA_DEVICE, ALARM_DEBUG, ALARM_WEB_HOST, ALARM_WEB_PORT,
+WLED_HOST (Rueckfall WLED_URL) als Default fuer den WLED-Host.
+"""
 from pathlib import Path
+import json
 import os
 from urllib.parse import urlsplit
 
-BASE_DIR = Path(__file__).resolve().parent
+BASE_DIR = Path(__file__).resolve().parent.parent
+CONFIG_DIR = BASE_DIR / 'config'
+HARDWARE_FILE = CONFIG_DIR / 'hardware.json'
+DEFAULTS_FILE = CONFIG_DIR / 'defaults.json'
+EFFECTS_FILE = CONFIG_DIR / 'effects.json'
+# Laufzeitdateien der Weboberflaeche (gitignored).
+SETTINGS_FILE = CONFIG_DIR / 'settings.json'
+# Alte Ablageorte vor dem Umzug nach config/, siehe settings.migrate_legacy().
+LEGACY_SETTINGS_FILE = BASE_DIR / 'settings.json'
+LEGACY_MAPPING_FILE = BASE_DIR / 'mp3_mapping.json'
 
 
 def normalize_wled_host(value):
@@ -20,165 +41,76 @@ def normalize_wled_host(value):
     return name + (f':{port}' if port is not None else '')
 
 
-# WLED settings are centrally configured and stored in settings.json.
-# Supported values are hostnames like wled.local/alarm-led.local and IPv4 addresses.
-WLED_ENABLED = True
-WLED_HOST = normalize_wled_host(os.environ.get('WLED_HOST') or os.environ.get('WLED_URL') or 'wled.local')
-WLED_TIMEOUT_SECONDS = 3.0
-
-# config.py
-
-# =========================
-# Alarm-Einstellungen
-# =========================
-ALARM_ENABLED = True
-ALARM_HOUR = 6        # Weckzeit Stunde
-ALARM_MINUTE = 15     # Weckzeit Minute
-
-# Wenn True: beim Alarm Backlight auf jeden Fall AN
-ALARM_BACKLIGHT = True
-
-# =========================================================
-# Datumsspezifische Weihnachtslieder
-# =========================================================
-# Format "MM-DD" → jedes Jahr gültig
-# Wird exakt an diesem Datum abgespielt
-DATE_SONGS = [
-    {"date": "12-11", "file": "mp3/xmas/maria.mp3", "message": "Happy Xmas"},
-    {"date": "12-12", "file": "mp3/xmas/frosty_snowman.mp3", "message": "2"},
-    {"date": "12-13", "file": "mp3/xmas/jingle_bells..mp3", "message": "3"},
-    {"date": "12-14", "file": "mp3/xmas/last_christmas.mp3", "message": "4"},
-    {"date": "12-15", "file": "mp3/xmas/let_it_snow.mp3", "message": "5"},
-    {"date": "12-16", "file": "mp3/xmas/morgen_weihnachtsmann.mp3", "message": "6"},
-    {"date": "12-17", "file": "mp3/xmas/oh_tannenbaum.mp3", "message": "7" },
-    {"date": "12-18", "file": "mp3/xmas/otto_weihnachtsbaeckerei.mp3", "message": "8"},
-    {"date": "12-19", "file": "mp3/xmas/polar_express.mp3", "message": "9"},
-    {"date": "12-20", "file": "mp3/xmas/santa_claus_town.mp3", "message": "10"},
-    {"date": "12-21", "file": "mp3/xmas/under_mistletoe.mp3", "message": "11"},
-    {"date": "12-22", "file": "mp3/xmas/zuckowski_weihnachtsbaeckerei.mp3", "message": "12"},
-    
-]
-
-# Welche Audiokarte soll verwendet werden?
-ALSA_DEVICE = os.environ.get("ALARM_ALSA_DEVICE", "plughw:3,0")
-
-# Lautstaerke in Prozent (0-100) je Schritt am rechten Drehknopf.
-VOLUME_STEP = 5
-
-# =========================
-# Debug-Ausgaben
-# =========================
-# Bei True gibt jede ausgeloeste Aktion (Eingabe-Events, Effektwechsel,
-# WLED-Befehle) eine Zeile auf der Konsole aus. Mit ALARM_DEBUG=0 abschaltbar.
-DEBUG = os.environ.get("ALARM_DEBUG", "1") != "0"
-
-# =========================
-# Weboberfläche
-# =========================
-# 0.0.0.0 bindet an alle Netzwerkschnittstellen und macht die Oberfläche im
-# lokalen Netzwerk erreichbar. Die Oberfläche hat KEINE Anmeldung; das Gerät
-# darf deshalb nur in einem vertrauenswürdigen Heimnetz stehen und nicht per
-# Portweiterleitung direkt aus dem Internet erreichbar sein.
-WEB_HOST = os.environ.get("ALARM_WEB_HOST", "0.0.0.0")
-WEB_PORT = int(os.environ.get("ALARM_WEB_PORT", "8080"))
-
-DEFAULT_SONG = "mp3/xmas/default.mp3"
-DEFAULT_MESSAGE = "Guten Morgen!"
-
-# =========================
-# Greeting-Zeiten & Backlight
-# =========================
-# Zeitspannen im Format "HH:MM".
-# backlight=True/False steuert, ob in dieser Zeit das Backlight an sein soll
-# (sofern der Benutzer es nicht manuell überschrieben hat).
-GREETINGS = [
-    {"start": "06:00", "end": "10:00", "text": "Guten Morgen", "backlight": True},
-    {"start": "10:00", "end": "14:00", "text": "Guten Mittag", "backlight": True},
-    {"start": "14:00", "end": "18:00", "text": "Guten Tag",    "backlight": True},
-    {"start": "18:00", "end": "20:30", "text": "Guten Abend",  "backlight": True},
-    # Nacht: Display aus
-    {"start": "20:30", "end": "06:00", "text": "Gute Nacht",   "backlight": False},
-]
-
-# =========================
-# Hardware-Pins
-# =========================
-BUTTON_PIN = 17     # GPIO-Pin für den Taster
-SERVO_PIN = 18      # GPIO-Pin für das PWM-Signal (Servo)
-
-# LCD-Einstellungen
-LCD_ADDRESS = 0x27  # I2C-Adresse (prüfen mit "i2cdetect -y 1")
-LCD_COLS = 16       # Spalten
-LCD_ROWS = 2        # Zeilen
+def _load_hardware():
+    try:
+        with open(HARDWARE_FILE, encoding='utf-8') as source:
+            data = json.load(source)
+        if isinstance(data, dict):
+            return data
+        raise ValueError('kein JSON-Objekt')
+    except (OSError, ValueError) as error:
+        # Der Wecker soll auch mit kaputter Datei starten: eingebaute Defaults.
+        print(f'{HARDWARE_FILE} nicht lesbar ({error}), verwende eingebaute Werte', flush=True)
+        return {}
 
 
-# Alarm remains active until stopped or this duration expires.
-ALARM_DURATION_SECONDS = 300
-LCD_I2C_PORT = 1
+_HARDWARE = _load_hardware()
 
-# Daily rotation; replace these entries with your own music and sayings.
-WAKE_ITEMS = [
-    {"file": entry["file"], "message": message}
-    for entry, message in zip(DATE_SONGS, [
-        "Heute ist dein Tag!", "Ein Schritt nach dem anderen.",
-        "Mach etwas Schoenes.", "Neuer Tag, neues Glueck!",
-        "Nimm dir Zeit zum Lachen.", "Kleine Schritte zaehlen.",
-        "Bleib neugierig!", "Du kannst etwas bewegen.",
-        "Zeit fuer neue Ideen.", "Geniesse den Augenblick.",
-        "Heute darf leicht sein.", "Schoen, dass du da bist!",
-    ])
-]
 
-# =========================
-# Bedienung: linker Drehknopf (Licht), rechter Drehknopf (Ton)
-# =========================
-# Der linke Drehknopf blaettert mit Live-Vorschau durch ALLE Effekte des
-# WLED-Geraets, nicht nur durch die kuratierte Liste in effects.json.
-# Damit ~180 Effekte mit einem Rastencoder erreichbar bleiben, springt
-# schnelles Drehen weiter: liegen zwei Schritte weniger als
-# EFFECT_FAST_SECONDS auseinander, zaehlt ein Schritt EFFECT_FAST_STEPS-fach.
-EFFECT_FAST_SECONDS = 0.15
-EFFECT_FAST_STEPS = 10
+def _hw(section, key, default):
+    value = _HARDWARE.get(section, {})
+    value = value.get(key, default) if isinstance(value, dict) else default
+    return default if value is None else value
 
-# Der rechte Taster meldet den kurzen Druck erst beim Loslassen, damit er vom
-# langen Druck unterscheidbar ist. So lange gedrueckt halten fuer "Alles normal":
-BUTTON_HOLD_SECONDS = 2.0
 
-# WLED communicates over HTTP/Wi-Fi, local peripherals over I2C.
-EFFECT_LIBRARY = BASE_DIR / "effects.json"
-ALARM_EFFECT = None  # library ID, e.g. "warm" or "music"
+def _address(value, default):
+    try:
+        return int(value, 0) if isinstance(value, str) else int(value)
+    except (TypeError, ValueError):
+        return default
 
-# =========================
-# Drehencoder (MCP23017) + 4x4-Tastenfeld (PCF8574)
-# =========================
-# Durch Messung bestaetigte Verkabelung, siehe rotary_clock.py:
-# MCP23017 0x21 - links: PB6/PB7 (A/B), PB5 (Taster); rechts: PA0/PA1 (A/B), PA2 (Taster).
-# Tastenfeld 0x20 - Zeilen P0..P3, Spalten P4..P7. Mit "i2cdetect -y 1" pruefen.
-INPUT_I2C_PORT = LCD_I2C_PORT
-MCP23017_ADDRESS = 0x21
-KEYPAD_ADDRESS = 0x20
 
+# LCD
+LCD_ADDRESS = _address(_hw('lcd', 'address', 0x27), 0x27)
+LCD_I2C_PORT = int(_hw('lcd', 'i2c_port', 1))
+LCD_COLS = int(_hw('lcd', 'cols', 16))
+LCD_ROWS = int(_hw('lcd', 'rows', 2))
+
+# Drehencoder (MCP23017) + 4x4-Tastenfeld (PCF8574), siehe tools/rotary_clock.py.
 # Optional I2C adapter module: open_controls(emit) -> object with close().
-# emit("left_rotate", signed_steps), emit("left_press"), emit("key", "1")
-# emit("right_rotate", signed_steps), emit("right_press"), emit("right_hold")
-INPUT_MODULE = "controls_mcp"
+INPUT_MODULE = _hw('inputs', 'module', 'controls_mcp') or None
+INPUT_I2C_PORT = int(_hw('inputs', 'i2c_port', LCD_I2C_PORT))
+MCP23017_ADDRESS = _address(_hw('inputs', 'mcp23017_address', 0x21), 0x21)
+KEYPAD_ADDRESS = _address(_hw('inputs', 'keypad_address', 0x20), 0x20)
+BUTTON_HOLD_SECONDS = float(_hw('inputs', 'button_hold_seconds', 2.0))
+EFFECT_FAST_SECONDS = float(_hw('inputs', 'effect_fast_seconds', 0.15))
+EFFECT_FAST_STEPS = int(_hw('inputs', 'effect_fast_steps', 10))
+LEGACY_BUTTON_ENABLED = bool(_hw('inputs', 'legacy_button_enabled', False))
+BUTTON_PIN = int(_hw('inputs', 'legacy_button_pin', 17))
 
-# =========================
-# Smart Home (Home Assistant) fuer die Tasten A/B/C
-# =========================
-# Leer = Integration noch nicht angebunden; die Tasten werden dann nur
-# geloggt (siehe smart_home.py). Sobald Home Assistant erreichbar ist, hier
-# URL und ein Long-Lived Access Token eintragen.
-HOME_ASSISTANT_URL = ""  # z.B. "http://homeassistant.local:8123"
-HOME_ASSISTANT_TOKEN = ""
+# Audio
+ALSA_DEVICE = os.environ.get('ALARM_ALSA_DEVICE') or _hw('audio', 'alsa_device', 'plughw:3,0')
+VOLUME_STEP = int(_hw('audio', 'volume_step', 5))
+MUSIC_DIR = BASE_DIR / _hw('audio', 'music_dir', 'mp3')
+CLICK_SOUND = BASE_DIR / _hw('audio', 'click_sound', 'sounds/click.wav')
 
-# Tasten, die statt eines Lichteffekts eine Home-Assistant-Aktion ausloesen
-# (service als "domain.service", siehe HA-Doku zu /api/services). Passt die
-# entity_id an eure HA-Instanz an; Deckenlampe und Alexa-Routinen sind
-# Platzhalter, die sich rein per Config umbenennen/umbiegen lassen.
-SMART_HOME_ACTIONS = {
-    "A": {"label": "Deckenlampe", "service": "light.toggle", "entity_id": "light.deckenlampe"},
-    "B": {"label": "Alexa Routine 1", "service": "script.turn_on", "entity_id": "script.alexa_routine_1"},
-    "C": {"label": "Alexa Routine 2", "service": "script.turn_on", "entity_id": "script.alexa_routine_2"},
-}
-LEGACY_BUTTON_ENABLED = False
+# Weboberflaeche: keine Anmeldung, nur fuers Heimnetz.
+WEB_HOST = os.environ.get('ALARM_WEB_HOST') or _hw('web', 'host', '0.0.0.0')
+WEB_PORT = int(os.environ.get('ALARM_WEB_PORT') or _hw('web', 'port', 8080))
+MAX_UPLOAD_MB = int(_hw('web', 'max_upload_mb', 32))
+
+# Steuerkanal Weboberflaeche -> Wecker-Prozess (nur localhost), siehe ipc.py.
+IPC_HOST = _hw('ipc', 'host', '127.0.0.1')
+IPC_PORT = int(_hw('ipc', 'port', 8099))
+
+ALEXA_SCRIPT = _hw('alexa', 'script', '')
+
+DEBUG = os.environ.get('ALARM_DEBUG', '1' if _HARDWARE.get('debug', True) else '0') != '0'
+
+# Default fuer den WLED-Host, falls weder settings.json noch defaults.json
+# einen gueltigen Wert liefern. WLED_HOST aus der Umgebung ersetzt den Wert
+# aus defaults.json, settings.json (Weboberflaeche) hat weiterhin Vorrang.
+_ENV_WLED_HOST = os.environ.get('WLED_HOST') or os.environ.get('WLED_URL')
+WLED_HOST = normalize_wled_host(_ENV_WLED_HOST or 'wled.local')
+WLED_ENABLED = True
+WLED_TIMEOUT_SECONDS = 3.0

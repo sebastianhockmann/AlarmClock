@@ -4,7 +4,11 @@
 # Testet Fade-In und Fade-Out unabhängig vom Hauptprogramm.
 
 import time
+import sys
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))  # Projektmodule (tools/ liegt eine Ebene tiefer)
 import config
+import settings
 from audio import AudioPlayer
 
 
@@ -13,8 +17,8 @@ def main():
 
     player = AudioPlayer()
 
-    # Default-Song aus config.py laden
-    filename = getattr(config, "DEFAULT_SONG", "mp3/happy.mp3")
+    # Standardlied aus den Einstellungen (Weboberflaeche) laden
+    filename = settings.get("music")["default_song"]
     print(f"Starte Fade-In Test mit Datei: {filename}")
 
     # Fade-In + Start

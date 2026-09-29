@@ -14,7 +14,7 @@ Andere Programme mit Zugriff auf denselben Chip vorher beenden.
 Kein Test fuer analoge Potentiometer: Dafuer ist ein ADC erforderlich.
 Polling kann bei schnellem Drehen Schritte verpassen.
 
-Start: .venv/bin/python encoder_test.py
+Start: .venv/bin/python tools/encoder_test.py
 Optionen: --address 0x21 --steps 2 --reverse --raw
 Register: https://ww1.microchip.com/downloads/aemDocuments/documents/APID/ProductDocuments/DataSheets/MCP23017-Data-Sheet-DS20001952.pdf
 """

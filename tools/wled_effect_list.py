@@ -3,17 +3,20 @@
 effects.json referenziert WLED-Effekte ueber die numerische ID
 (state.seg[].fx), nicht ueber den Namen aus der WLED-Oberflaeche
 ("Effect mode"-Liste). Dieses Skript fragt genau diese Liste live beim
-konfigurierten WLED-Geraet ab (Host/Timeout aus settings.json bzw.
-config.py, wie der Rest des Programms) und zeigt Name -> ID an, damit man
-die passende Zahl von Hand in effects.json eintragen kann.
+konfigurierten WLED-Geraet ab (Host/Timeout aus config/settings.json bzw.
+config/defaults.json, wie der Rest des Programms) und zeigt Name -> ID an, damit man
+die passende Zahl in config/effects.json oder in der Weboberflaeche eintragen kann.
 
-Start: .venv/bin/python wled_effect_list.py
-Suche einschraenken: .venv/bin/python wled_effect_list.py --search aurora
+Start: .venv/bin/python tools/wled_effect_list.py
+Suche einschraenken: .venv/bin/python tools/wled_effect_list.py --search aurora
 """
 
 import argparse
 import sys
 
+import sys
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))  # Projektmodule (tools/ liegt eine Ebene tiefer)
 from lighting import WLEDManager
 
 

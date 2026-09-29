@@ -20,12 +20,20 @@ class AudioPlayer:
         self.process = None
         self._lock = threading.RLock()
         self._state = STATE_STOPPED
+        self._started = False
         self._volume = 100
 
     @property
     def is_playing(self):
         with self._lock:
             return self.process is not None and self.process.poll() is None and self._state == STATE_PLAYING
+
+    @property
+    def finished(self):
+        """Das zuletzt gestartete Lied lief und ist jetzt zu Ende (oder gestoppt)."""
+        with self._lock:
+            return self._started and (self.process is None or self.process.poll() is not None
+                                      or self._state == STATE_STOPPED)
 
     @property
     def volume(self):
@@ -45,6 +53,7 @@ class AudioPlayer:
                 text=True, bufsize=1,
             )
             self._state = STATE_STOPPED
+            self._started = False
             threading.Thread(target=self._read_status, args=(self.process,), daemon=True).start()
             self._send(f'SILENCE\nVOLUME {self._volume}\nLOAD {path}')
 
@@ -70,6 +79,8 @@ class AudioPlayer:
                     with self._lock:
                         if self.process is process:
                             self._state = int(line.split()[1])
+                            if self._state == STATE_PLAYING:
+                                self._started = True
         except (OSError, ValueError):
             pass
 

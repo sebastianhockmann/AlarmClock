@@ -2,6 +2,9 @@
 import time
 from RPLCD.i2c import CharLCD
 from gpiozero import Button
+import sys
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))  # Projektmodule (tools/ liegt eine Ebene tiefer)
 import config
 
 # LCD initialisieren

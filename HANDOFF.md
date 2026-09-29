@@ -1,58 +1,44 @@
 # Handoff — AlarmClock
 
-_Status as of 2026-09-23, commit `9a177e7` ("New functions") on `main`._
+_Status as of 2026-09-26, uncommitted restructuring on top of `571eca3` on `main`._
 
 ## Where things stand
 
-The clock is functionally complete for the current hardware:
+Restructured for maintainability:
 
-- Alarm triggers at the configured time, plays the day's song once, shows the
-  message, and stays active until stopped or `ALARM_DURATION_SECONDS` (300 s) elapse.
-- Left encoder browses all WLED effects live (with fast-spin acceleration),
-  press toggles the strip. Keypad selects curated effects from `effects.json`.
-- Right encoder sets volume, short press stops alarm / toggles music, long press
-  (2 s) resets everything to "Alles normal".
-- Web UI: alarm time + enabled, WLED host/timeout + connection test, date→song
-  mapping, MP3 upload and preview.
-- systemd units + nginx reverse proxy for permanent operation on the Pi.
-
-Latest commit added: right-knob volume control, long-press reset, `EffectBrowser`
-(all device effects on the left knob), and LCD backlight reset.
+- All configuration moved to `config/` as JSON (`hardware.json`, `defaults.json`,
+  `effects.json`; runtime overrides in gitignored `config/settings.json`). `settings.py`
+  validates and merges; old root `settings.json`/`mp3_mapping.json` are migrated on
+  first clock start.
+- New modules: `wake.py` (wake program: light sunrise ramp, volume ramp, end after song,
+  snooze), `integrations.py` (HTTP / Home Assistant / Alexa via alexa-remote-control),
+  `weather.py` (Open-Meteo), `ipc.py` (web UI → clock commands over localhost UDP).
+  `smart_home.py`, `EffectSelector`, `WLEDClient` removed.
+- Multiple alarms with weekdays, master on/off switch, light lead before alarm.
+- Keypad fully configurable per key (effect, music, weather, display, snooze, Alexa, HTTP, HA …).
+- Web UI rewritten as tabbed single page (vanilla JS) over a JSON API; audio preview now
+  plays on the clock (single ALSA owner) or in the browser.
+- Manual hardware scripts moved to `tools/`.
 
 ## Tests
 
-`python -m unittest discover -s tests -v` → 41 tests. On the Windows dev box,
-2 fail for environment reasons only (see CLAUDE.md): missing `smbus2`, and
-backslash path separators in the web mapping test. Expected all-green on the Pi —
-**not yet re-verified on the Pi after the latest commit.**
+`python -m unittest discover -s tests -v` → 82 tests, all green on the Pi.
+Integration-checked on the Pi: new web UI against the real WLED (16.0.1, 264 LEDs,
+AudioReactive with I2S mic active), Open-Meteo search, and the clock main loop with a
+stub LCD driven over `ipc`. Rendered pages checked via headless Firefox (desktop + phone width).
 
-## Open items / known limitations
+## Open items
 
-1. **Verify on hardware** after `9a177e7`: volume knob, long-press reset,
-   effect browsing across ~180 effects, backlight reset.
-2. Web preview and alarm use separate mpg123 processes; simultaneous playback may
-   collide on the ALSA device. No shared runtime control between the two processes.
-3. Alarm "already fired today" lock is in memory only — a restart within the
-   alarm minute can re-trigger; missed alarms are not caught up.
-4. No acoustic fallback if the audio device/decoder fails after start.
-5. WLED audio reactivity not implemented (only activates a pre-configured preset);
-   needs a decision on mic vs. audio sync and controller/firmware details.
+1. **Services still run the old code** — needs
+   `sudo systemctl restart alarmclock.service alarmclock-web.service` (sudo needs a password).
+   Then check `journalctl -u alarmclock.service` for the migration message and verify on
+   hardware: wake test from the web UI (light ramp, volume ramp, end after song), snooze via
+   keypad, key actions, LCD messages.
+2. Alexa: `alexa_remote_control.sh` not installed yet; key B is preconfigured for it.
+   Alternative without login: URL Routine Trigger / Voice Monkey URL as `http` action.
+3. Home Assistant URL/token not set; key A (Deckenlampe) does nothing until then.
+4. Weather location not set.
+5. Alarm "already fired today" lock is in memory only (restart within the alarm minute can
+   re-trigger; missed alarms are not caught up).
 6. Web UI has no authentication — LAN-only by design.
-7. Tests could normalize path separators to pass on Windows.
-8. `WAKE_ITEMS` / `DATE_SONGS` are still the Christmas starter library.
-
-## Deploying changes to the Pi
-
-```sh
-cd /home/pi/AlarmClock && git pull
-.venv/bin/pip install -r requirements.txt
-sudo systemctl restart alarmclock.service alarmclock-web.service
-journalctl -u alarmclock.service -f
-```
-
-## Useful pointers
-
-- Architecture and conventions: `CLAUDE.md`
-- Full operator docs (German): `README.md`
-- Logic entry point for most changes: `controller.py` (`ClockController.handle`)
-- Hardware wiring/addresses: `config.py` section "Drehencoder" and `rotary_clock.py`
+7. Music library is still the Christmas starter set.

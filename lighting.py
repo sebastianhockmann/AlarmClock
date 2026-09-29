@@ -7,59 +7,15 @@ import time
 from urllib.request import Request, urlopen
 from urllib.error import HTTPError, URLError
 import config
-from settings import wled_settings, validate_wled_settings
+from settings import validate_effects, validate_wled_settings, wled_settings
 
 logger = logging.getLogger(__name__)
 
 
 def load_effects(path):
+    """Effektbibliothek aus einer Datei lesen und streng pruefen (ValueError)."""
     with open(path, encoding='utf-8') as source:
-        effects = json.load(source)
-    if not isinstance(effects, list) or not effects:
-        raise ValueError('Effect library must be a nonempty list')
-    ids, keys = set(), set()
-    for effect in effects:
-        if not isinstance(effect, dict):
-            raise ValueError('Each effect must be an object')
-        for field in ('id', 'name'):
-            if not isinstance(effect.get(field), str) or not effect[field]:
-                raise ValueError(f'Effect needs {field}')
-        if not isinstance(effect.get('state'), dict) or not effect['state']:
-            raise ValueError('Effect needs a WLED state')
-        if effect['id'] in ids:
-            raise ValueError('Duplicate effect ID')
-        ids.add(effect['id'])
-        if 'key' in effect:
-            if not isinstance(effect['key'], str) or effect['key'] in keys:
-                raise ValueError('Invalid or duplicate effect key')
-            keys.add(effect['key'])
-    return effects
-
-
-class EffectSelector:
-    def __init__(self, effects, send):
-        self.effects = effects
-        self.send = send
-        self.index = 0
-
-    @property
-    def selected(self):
-        return self.effects[self.index]
-
-    def rotate(self, steps):
-        self.index = (self.index + steps) % len(self.effects)
-        return f"{self.index + 1}/{len(self.effects)} {self.selected['name']}"
-
-    def confirm(self):
-        self.send(self.selected['state'])
-        return self.selected['name']
-
-    def select(self, field, value):
-        for index, effect in enumerate(self.effects):
-            if effect.get(field) == value:
-                self.index = index
-                return self.confirm()
-        raise ValueError(f'Unknown effect {field}: {value}')
+        return validate_effects(json.load(source))
 
 
 def browser_entries(effects):
@@ -232,6 +188,21 @@ class WLEDManager:
     def get_status(self):
         return self._request()
 
+    def fetch(self, path):
+        """Synchrones GET auf /json/<path> (z. B. 'effects', 'fxdata'); None bei Fehler."""
+        self.refresh_from_settings()
+        if not self.enabled:
+            self.last_error = 'WLED disabled'
+            return None
+        try:
+            with urlopen(f'{self.base_url}/json/{path}', timeout=self.timeout) as response:
+                result = json.loads(response.read(1024 * 1024))
+        except (TimeoutError, OSError, URLError, ValueError, UnicodeError) as error:
+            self.last_error = str(getattr(error, 'reason', error))
+            return None
+        self.last_error = None
+        return result
+
     def is_available(self):
         return self.get_status() is not None
 
@@ -279,10 +250,3 @@ class WLEDManager:
         self.stopping.set()
         if self._thread is not None:
             self._thread.join(timeout=0.2)
-
-
-class WLEDClient(WLEDManager):
-    """Compatibility name for existing callers; all HTTP lives in WLEDManager."""
-    def __init__(self, url, timeout=None, report=None):
-        super().__init__(host=url or config.WLED_HOST, enabled=bool(url),
-                         timeout=timeout, report=report)

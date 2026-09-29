@@ -1,130 +1,802 @@
 <!DOCTYPE html>
-<html>
+<html lang="de">
 <head>
-    <meta charset="UTF-8">
-    <title>Wecker Steuerung</title>
-    <style>
-        body { font-family: sans-serif; margin: 2rem; }
-        h1, h2 { color: #333; }
-        form { margin-bottom: 2rem; }
-        input, select, button { padding: 0.5rem; margin: 0.2rem; }
-        table { border-collapse: collapse; width: 100%; margin-top: 1rem; }
-        th, td { border: 1px solid #aaa; padding: 0.5rem; text-align: left; }
-    </style>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Wecker</title>
+<style>
+:root {
+  --bg: #f4f1ec; --card: #ffffff; --text: #1f2328; --muted: #6a6f76; --line: #e2ddd4;
+  --accent: #d9731a; --accent-soft: #fbe9d7; --ok: #2f8a4c; --bad: #c0392b; --chip: #efebe4;
+  --shadow: 0 1px 2px rgba(0,0,0,.06), 0 4px 16px rgba(0,0,0,.04);
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #16181b; --card: #1f2226; --text: #e8e6e3; --muted: #9aa0a6; --line: #30343a;
+    --accent: #f0913a; --accent-soft: #3a2a1c; --ok: #5cc27f; --bad: #ef6b5b; --chip: #2a2e33;
+    --shadow: none;
+  }
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--text);
+  font: 15px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+header { position: sticky; top: 0; z-index: 5; background: var(--bg); border-bottom: 1px solid var(--line); }
+.top { display: flex; align-items: center; gap: 12px; padding: 12px 16px 4px; max-width: 960px; margin: auto; }
+.top h1 { font-size: 20px; margin: 0; flex: 1; }
+.status-dot { font-size: 13px; color: var(--muted); }
+.status-dot b { color: var(--ok); } .status-dot b.off { color: var(--bad); }
+nav { display: flex; gap: 4px; overflow-x: auto; padding: 6px 12px 8px; max-width: 960px; margin: auto; scrollbar-width: none; }
+nav button { flex: none; border: 0; background: transparent; color: var(--muted); padding: 7px 12px;
+  border-radius: 999px; font: inherit; cursor: pointer; }
+nav button.active { background: var(--accent); color: #fff; }
+main { max-width: 960px; margin: auto; padding: 16px; }
+section.tab { display: none; } section.tab.active { display: block; }
+.card { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 16px;
+  margin-bottom: 14px; box-shadow: var(--shadow); }
+.card h2 { font-size: 16px; margin: 0 0 4px; }
+.card > p.hint, .hint { color: var(--muted); font-size: 13px; margin: 2px 0 12px; }
+.grid { display: grid; gap: 12px; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); }
+label.field { display: flex; flex-direction: column; gap: 4px; font-size: 13px; color: var(--muted); }
+label.field > span.v { color: var(--text); font-variant-numeric: tabular-nums; }
+input, select, textarea { font: inherit; color: var(--text); background: var(--bg); border: 1px solid var(--line);
+  border-radius: 9px; padding: 8px 10px; min-width: 0; width: 100%; }
+input[type=checkbox] { width: auto; }
+input[type=range] { padding: 0; accent-color: var(--accent); }
+input[type=color] { padding: 2px; height: 38px; }
+textarea { min-height: 70px; font-family: ui-monospace, monospace; font-size: 12px; }
+button { font: inherit; cursor: pointer; border-radius: 9px; border: 1px solid var(--line);
+  background: var(--card); color: var(--text); padding: 8px 14px; }
+button.primary { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; }
+button.danger { color: var(--bad); }
+button.small { padding: 4px 9px; font-size: 13px; }
+button:disabled { opacity: .5; cursor: default; }
+.row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.row.end { justify-content: flex-end; margin-top: 12px; }
+.spacer { flex: 1; }
+.big { font-size: 34px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.muted { color: var(--muted); }
+.switch { display: inline-flex; align-items: center; gap: 8px; cursor: pointer; user-select: none; }
+.switch input { appearance: none; width: 42px; height: 24px; border-radius: 999px; background: var(--line);
+  position: relative; transition: .15s; border: 0; padding: 0; margin: 0; }
+.switch input::after { content: ""; position: absolute; top: 3px; left: 3px; width: 18px; height: 18px;
+  border-radius: 50%; background: #fff; transition: .15s; }
+.switch input:checked { background: var(--accent); }
+.switch input:checked::after { left: 21px; }
+.days { display: flex; gap: 4px; flex-wrap: wrap; }
+.days button { width: 38px; padding: 6px 0; border-radius: 999px; background: var(--chip); border-color: transparent; font-size: 13px; }
+.days button.on { background: var(--accent); color: #fff; }
+.alarm { display: grid; grid-template-columns: auto 130px 1fr auto; gap: 10px; align-items: center;
+  grid-template-areas: "sw time label del" ". days days days"; padding: 12px 0; border-top: 1px solid var(--line); }
+.alarm:first-of-type { border-top: 0; }
+.alarm .sw { grid-area: sw; } .alarm .time { grid-area: time; } .alarm .label { grid-area: label; }
+.alarm .del { grid-area: del; } .alarm .days { grid-area: days; }
+.alarm input[type=time] { font-size: 20px; font-weight: 600; padding: 4px 6px; min-width: 120px; }
+@media (max-width: 620px) {
+  .alarm { grid-template-columns: auto 1fr auto; grid-template-areas: "sw time del" "label label label" "days days days"; }
+}
+.tag:empty { display: none; }
+.keypad { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; max-width: 520px; }
+.key { aspect-ratio: 1.25; border-radius: 12px; border: 1px solid var(--line); background: var(--bg);
+  display: flex; flex-direction: column; justify-content: center; align-items: center; gap: 2px; padding: 4px; text-align: center; }
+.key b { font-size: 20px; } .key small { font-size: 11px; color: var(--muted); line-height: 1.2;
+  overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+.key.sel { border-color: var(--accent); background: var(--accent-soft); }
+.key.remote small { color: var(--accent); }
+table { width: 100%; border-collapse: collapse; }
+td, th { padding: 6px 4px; border-top: 1px solid var(--line); text-align: left; vertical-align: middle; }
+th { font-size: 12px; color: var(--muted); font-weight: 500; border-top: 0; }
+.files li { display: flex; align-items: center; gap: 6px; padding: 5px 0; border-top: 1px solid var(--line); }
+.files { list-style: none; padding: 0; margin: 0; max-height: 380px; overflow: auto; }
+.files li span { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.timeline { border-left: 3px solid var(--accent); padding-left: 12px; margin: 8px 0 0; }
+.timeline div { margin: 4px 0; } .timeline b { font-variant-numeric: tabular-nums; }
+.effect { display: grid; grid-template-columns: 1fr 1.3fr 90px 54px auto; gap: 8px; align-items: end;
+  padding: 10px 0; border-top: 1px solid var(--line); }
+@media (max-width: 700px) { .effect { grid-template-columns: 1fr 1fr; } }
+.tag { font-size: 11px; background: var(--chip); border-radius: 6px; padding: 1px 6px; color: var(--muted); }
+.badge { font-size: 11px; color: var(--accent); }
+details summary { cursor: pointer; color: var(--muted); font-size: 13px; }
+#toast { position: fixed; left: 50%; bottom: 20px; transform: translateX(-50%); background: var(--text); color: var(--bg);
+  padding: 10px 16px; border-radius: 10px; opacity: 0; transition: .2s; pointer-events: none; max-width: 90vw; z-index: 20; }
+#toast.show { opacity: 1; } #toast.bad { background: var(--bad); color: #fff; }
+.help { background: var(--accent-soft); border-radius: 10px; padding: 10px 12px; font-size: 13px; margin-top: 10px; }
+.help ol { margin: 4px 0; padding-left: 18px; }
+code { background: var(--chip); padding: 1px 5px; border-radius: 5px; font-size: 12px; }
+</style>
 </head>
 <body>
-    <h1>Wecker Weboberfläche</h1>
+<header>
+  <div class="top">
+    <h1>⏰ Wecker</h1>
+    <span class="status-dot" id="clock-status">…</span>
+  </div>
+  <nav id="tabs"></nav>
+</header>
+<main>
 
-    <h2>🔊 MP3-Dateien hochladen</h2>
-    <form action="/upload" method="post" enctype="multipart/form-data">
-        <input type="file" name="file" accept=".mp3">
-        <button type="submit">Hochladen</button>
-    </form>
-    <h3>Verfügbare MP3s</h3>
-    <ul>
-        {% for file in mp3_files %}
-            <li>
-                {{ file }}
-                <form action="{{ url_for('play_file', filename=file) }}" method="post" style="display:inline;">
-                    <button type="submit">Abspielen</button>
-                </form>
-            </li>
-        {% endfor %}
-    </ul>
-            <h2>⏹️ Wiedergabe stoppen</h2>
-<form action="/stop" method="post">
-    <button type="submit">Stopp</button>
-</form>
+<!-- ÜBERSICHT -->
+<section class="tab" data-tab="overview" data-title="Übersicht">
+  <div class="card">
+    <div class="row">
+      <div>
+        <div class="muted">Nächster Wecker</div>
+        <div class="big" id="next-alarm">–</div>
+        <div class="muted" id="next-alarm-info"></div>
+      </div>
+      <div class="spacer"></div>
+      <label class="switch"><input type="checkbox" id="master-switch"> <span>Wecker aktiv</span></label>
+    </div>
+  </div>
+  <div class="card">
+    <h2>Jetzt</h2>
+    <p class="hint" id="now-playing">–</p>
+    <div class="row">
+      <button onclick="control('play_today')">▶ Tageslied</button>
+      <button onclick="control('play_random')">🔀 Zufallssong</button>
+      <button onclick="control('stop_audio')">⏹ Stopp</button>
+      <span class="spacer"></span>
+      <button onclick="control('wake_test')">🌅 Weckprogramm testen</button>
+      <button onclick="control('wake_stop')">Wecker aus</button>
+    </div>
+    <div class="row" style="margin-top:12px">
+      <span class="muted">Lautstärke</span>
+      <input type="range" id="volume" min="0" max="100" step="5" style="flex:1">
+      <span id="volume-value" class="muted">–</span>
+    </div>
+    <p class="hint" style="margin-top:10px">Heute: <span id="today-song"></span></p>
+  </div>
+</section>
 
+<!-- WECKER -->
+<section class="tab" data-tab="alarms" data-title="Wecker">
+  <div class="card">
+    <h2>Weckzeiten</h2>
+    <p class="hint">Mehrere Wecker möglich, z. B. werktags früh und am Wochenende später. Was beim Wecken passiert, steht unter „Weckprogramm“.</p>
+    <div id="alarm-list"></div>
+    <div class="row end">
+      <button onclick="addAlarm()">＋ Wecker</button>
+      <span class="spacer"></span>
+      <button class="primary" onclick="saveAlarms()">Speichern</button>
+    </div>
+  </div>
+</section>
 
-    <h2>⏰ Alarmzeit einstellen</h2>
-    <form action="/set_alarm" method="post">
-        <label>Aktiv:</label>
-        <input type="checkbox" name="enabled" {% if config.ALARM_ENABLED %}checked{% endif %}>
-        <label>Stunde:</label>
-        <input type="number" name="hour" value="{{ config.ALARM_HOUR }}" min="0" max="23">
-        <label>Minute:</label>
-        <input type="number" name="minute" value="{{ config.ALARM_MINUTE }}" min="0" max="59">
-        <button type="submit">Speichern</button>
-    </form>
+<!-- WECKPROGRAMM -->
+<section class="tab" data-tab="wake" data-title="Weckprogramm">
+  <div class="card">
+    <h2>Licht</h2>
+    <p class="hint">Das Licht startet gedimmt und wird langsam heller – wie ein Sonnenaufgang.</p>
+    <div class="grid" id="wake-light"></div>
+  </div>
+  <div class="card">
+    <h2>Musik</h2>
+    <p class="hint">Die Musik beginnt leise und wird lauter. Danach endet der Wecker von selbst.</p>
+    <div class="grid" id="wake-music"></div>
+  </div>
+  <div class="card">
+    <h2>Ende &amp; Schlummern</h2>
+    <div class="grid" id="wake-end"></div>
+  </div>
+  <div class="card">
+    <h2>Ablauf</h2>
+    <div class="timeline" id="wake-timeline"></div>
+    <div class="row end">
+      <button onclick="control('wake_test')">🌅 Jetzt testen</button>
+      <button onclick="control('wake_stop')">Test beenden</button>
+      <span class="spacer"></span>
+      <button class="primary" onclick="saveWake()">Speichern</button>
+    </div>
+  </div>
+</section>
 
-    <h2>WLED Controller</h2>
-    <form action="/api/wled/settings" method="post">
-        <label>Aktiv:</label>
-        <input type="checkbox" name="enabled" {% if wled.enabled %}checked{% endif %}>
-        <br>
-        <label>Hostname / IP:</label>
-        <input type="text" name="host" required value="{{ wled.host }}" placeholder="alarm-led.local">
-        <br>
-        <label>Timeout:</label>
-        <input type="number" name="timeout" value="{{ wled.timeout }}" min="0.5" max="30" step="0.5">
-        <span>Sekunden</span>
-        <br>
-        <label>Status:</label>
-        <span id="wled-status" role="status" style="color: gray;">● {% if wled.enabled %}nicht geprüft{% else %}deaktiviert{% endif %}</span>
-        <br>
-        <button type="button" id="wled-test">Verbindung testen</button>
-        <small>Testet die gespeicherten Einstellungen. Änderungen zuerst speichern.</small>
-        <button type="submit">Speichern</button>
-    </form>
-
-    <h2>📅 MP3-Zuweisung für bestimmte Tage</h2>
-    <form action="/set_mapping" method="post">
-        <label>Datum (YYYY-MM-DD oder MM-DD):</label>
-        <input type="text" name="date" placeholder="z. B. 12-24 oder 2025-07-23">
-        <label>Datei:</label>
-        <select name="filename">
-            {% for file in mp3_files %}
-                <option value="{{ file }}">{{ file }}</option>
-            {% endfor %}
-        </select>
-        <label>Spruch:</label>
-        <input type="text" name="message" placeholder="Guten Morgen!">
-        <button type="submit">Zuweisen</button>
-    </form>
-
-    <h3>Aktuelle Zuweisungen</h3>
+<!-- TASTEN -->
+<section class="tab" data-tab="keys" data-title="Tasten">
+  <div class="card">
+    <h2>Tastenfeld</h2>
+    <p class="hint">Taste antippen, um die Belegung zu ändern. Solange der Wecker klingelt, kann jede Taste „Schlummern“ bedeuten (Weckprogramm).</p>
+    <div class="keypad" id="keypad"></div>
+  </div>
+  <div class="card" id="key-editor"></div>
+  <div class="card">
+    <h2>Drehknöpfe (fest)</h2>
     <table>
-        <tr>
-            <th>Datum</th>
-            <th>Datei</th>
-            <th>Spruch</th>
-            <th></th>
-        </tr>
-        {% for entry in mapping %}
-        <tr>
-            <td>{{ entry.date }}</td>
-            <td>{{ entry.file }}</td>
-            <td>{{ entry.message }}</td>
-            <td>
-                <form action="/delete_mapping" method="post" style="display:inline;">
-                    <input type="hidden" name="date" value="{{ entry.date }}">
-                    <button type="submit">Löschen</button>
-                </form>
-            </td>
-        </tr>
-        {% endfor %}
+      <tr><td>Links drehen</td><td>alle Lichteffekte des WLED durchblättern (schnell drehen = springen)</td></tr>
+      <tr><td>Links drücken</td><td>Licht an/aus</td></tr>
+      <tr><td>Rechts drehen</td><td>Lautstärke</td></tr>
+      <tr><td>Rechts drücken</td><td>Wecker aus / Musik an/aus</td></tr>
+      <tr><td>Rechts 2 s halten</td><td>„Alles normal“: Musik aus, Licht an, Display automatisch</td></tr>
     </table>
+  </div>
+</section>
+
+<!-- MUSIK -->
+<section class="tab" data-tab="music" data-title="Musik">
+  <div class="card">
+    <h2>MP3-Dateien</h2>
+    <div class="row">
+      <input type="file" id="upload" accept=".mp3,audio/mpeg" multiple style="flex:1">
+      <button class="primary" onclick="upload()">Hochladen</button>
+    </div>
+    <p class="hint">▶ spielt am Wecker, 🎧 hier im Browser.</p>
+    <audio id="player" controls style="width:100%; display:none"></audio>
+    <ul class="files" id="file-list"></ul>
+  </div>
+  <div class="card">
+    <h2>Standard</h2>
+    <div class="grid">
+      <label class="field">Standardlied<select id="default-song"></select></label>
+      <label class="field">Standardspruch<input id="default-message" maxlength="120"></label>
+    </div>
+  </div>
+  <div class="card">
+    <h2>Lieder für bestimmte Tage</h2>
+    <p class="hint"><code>12-24</code> = jedes Jahr, <code>2026-12-24</code> = nur einmal. Hat Vorrang vor der Rotation.</p>
+    <table><thead><tr><th style="width:130px">Datum</th><th>Datei</th><th>Spruch</th><th></th></tr></thead>
+      <tbody id="date-list"></tbody></table>
+    <div class="row end"><button onclick="addDate()">＋ Datum</button></div>
+  </div>
+  <div class="card">
+    <h2>Tägliche Rotation</h2>
+    <p class="hint">An allen anderen Tagen kommt reihum ein Lied aus dieser Liste (bei „Tageslied“).</p>
+    <table><thead><tr><th>Datei</th><th>Spruch</th><th></th></tr></thead>
+      <tbody id="rotation-list"></tbody></table>
+    <div class="row end">
+      <button onclick="addRotation()">＋ Lied</button>
+      <span class="spacer"></span>
+      <button class="primary" onclick="saveMusic()">Musik speichern</button>
+    </div>
+  </div>
+</section>
+
+<!-- LICHT -->
+<section class="tab" data-tab="light" data-title="Licht">
+  <div class="card">
+    <h2>WLED-Controller</h2>
+    <div class="grid">
+      <label class="field">Hostname / IP<input id="wled-host" placeholder="wled.local"></label>
+      <label class="field">Timeout (s)<input id="wled-timeout" type="number" min="0.5" max="30" step="0.5"></label>
+      <label class="switch" style="align-self:end"><input type="checkbox" id="wled-enabled"> aktiv</label>
+    </div>
+    <div class="row end">
+      <span id="wled-status" class="muted"></span><span class="spacer"></span>
+      <button onclick="testWled()">Verbindung testen</button>
+      <button class="primary" onclick="saveWled()">Speichern</button>
+    </div>
+  </div>
+  <div class="card">
+    <h2>Effektbibliothek</h2>
+    <p class="hint">Diese Effekte stehen für Tasten und Weckprogramm zur Wahl. ♪ = reagiert aufs Mikrofon (Lautstärke), ♫ = Frequenzen.
+      <button class="small" onclick="loadDeviceEffects()">Effektliste vom WLED laden</button> <span id="fx-status"></span></p>
+    <datalist id="fx-list"></datalist>
+    <div id="effect-list"></div>
+    <div class="row end">
+      <button onclick="addEffect()">＋ Effekt</button>
+      <span class="spacer"></span>
+      <button onclick="resetSection('effects')">Standard wiederherstellen</button>
+      <button class="primary" onclick="saveEffects()">Effekte speichern</button>
+    </div>
+  </div>
+</section>
+
+<!-- SMART HOME -->
+<section class="tab" data-tab="smart" data-title="Smart Home">
+  <div class="card">
+    <h2>Alexa</h2>
+    <p class="hint">Alexa-Geräte haben keine lokale Schnittstelle – gesteuert wird über die Amazon-Cloud, das Gerät wird per <b>Name</b> gewählt, nicht per IP.</p>
+    <div class="grid">
+      <label class="field">Standard-Echo (Name wie in der Alexa-App)<input id="alexa-device" list="alexa-devices" placeholder="z. B. Echo Kinderzimmer"></label>
+    </div>
+    <datalist id="alexa-devices"></datalist>
+    <div class="row end">
+      <span class="muted" id="alexa-status"></span><span class="spacer"></span>
+      <button onclick="loadAlexaDevices()">Geräte abfragen</button>
+      <button class="primary" onclick="saveSection('alexa', {default_device: val('alexa-device')})">Speichern</button>
+    </div>
+    <div class="help">
+      <b>Drei Wege, per Taste Alexa zu steuern</b> (Aktionstyp unter „Tasten“):
+      <ol>
+        <li><b>HTTP-Aufruf → Alexa-Routine</b> (am einfachsten): Skill „URL Routine Trigger“ oder „Voice Monkey“ aktivieren, dort einen Auslöser anlegen, in der Alexa-App eine Routine „Wenn Auslöser → Amazon Music spielen / Deckenlampe an / Wetter“ bauen und die URL hier bei der Taste eintragen.</li>
+        <li><b>Alexa (Sprachbefehl)</b>: Befehle wie gesprochen („spiele Amazon Music“, „schalte die Deckenlampe an“) über <code>alexa_remote_control.sh</code> auf dem Pi. Status: <span id="alexa-script"></span></li>
+        <li><b>Home Assistant</b> mit der Integration „Alexa Media Player“ oder direkt die Lampe.</li>
+      </ol>
+    </div>
+  </div>
+  <div class="card">
+    <h2>Home Assistant</h2>
+    <div class="grid">
+      <label class="field">URL<input id="ha-url" placeholder="http://homeassistant.local:8123"></label>
+      <label class="field">Long-Lived Access Token<input id="ha-token" type="password" autocomplete="off"></label>
+    </div>
+    <div class="row end">
+      <span class="muted" id="ha-token-state"></span><span class="spacer"></span>
+      <button class="danger" onclick="saveHa(true)">Token löschen</button>
+      <button class="primary" onclick="saveHa(false)">Speichern</button>
+    </div>
+  </div>
+  <div class="card">
+    <h2>Wetter</h2>
+    <p class="hint">Wetterbericht für das Display (Open-Meteo, kostenlos). Ansagen kann ihn Alexa (Aktion „Alexa → Wetterbericht“).</p>
+    <div class="row">
+      <input id="weather-query" placeholder="Ort suchen, z. B. Hamburg" style="flex:1">
+      <button onclick="searchPlace()">Suchen</button>
+    </div>
+    <div id="weather-results" class="row" style="margin-top:8px"></div>
+    <div class="grid" style="margin-top:8px">
+      <label class="field">Ort<input id="weather-location"></label>
+      <label class="field">Breitengrad<input id="weather-lat" type="number" step="0.0001"></label>
+      <label class="field">Längengrad<input id="weather-lon" type="number" step="0.0001"></label>
+    </div>
+    <div class="row end">
+      <span class="muted" id="weather-status"></span><span class="spacer"></span>
+      <button onclick="testWeather()">Wetter abrufen</button>
+      <button class="primary" onclick="saveWeather()">Speichern</button>
+    </div>
+  </div>
+</section>
+
+<!-- ANZEIGE -->
+<section class="tab" data-tab="display" data-title="Anzeige">
+  <div class="card">
+    <h2>Begrüßungen &amp; Display-Licht</h2>
+    <p class="hint">Text in der zweiten LCD-Zeile je nach Uhrzeit. Ohne Häkchen ist das Display in dieser Zeit dunkel (Taste/Wecker schaltet es trotzdem an). Umlaute werden fürs LCD umgeschrieben.</p>
+    <table><thead><tr><th>Von</th><th>Bis</th><th>Text</th><th>Licht</th><th></th></tr></thead>
+      <tbody id="greeting-list"></tbody></table>
+    <div class="row end">
+      <button onclick="addGreeting()">＋ Zeitraum</button>
+      <span class="spacer"></span>
+      <button onclick="resetSection('greetings')">Standard</button>
+      <button class="primary" onclick="saveGreetings()">Speichern</button>
+    </div>
+  </div>
+</section>
+</main>
+<div id="toast"></div>
+
 <script>
-    document.getElementById('wled-test').addEventListener('click', async function () {
-        const status = document.getElementById('wled-status');
-        this.disabled = true;
-        status.style.color = 'gray';
-        status.textContent = '● wird geprüft …';
-        try {
-            const response = await fetch('/api/wled/test');
-            if (!response.ok) throw new Error('Test fehlgeschlagen');
-            const data = await response.json();
-            status.style.color = data.success ? 'green' : 'red';
-            status.textContent = data.success ? '● erreichbar: ' + data.host
-                : '● nicht erreichbar: ' + data.host + ' (' + data.error + ')';
-        } catch (error) {
-            status.style.color = 'red';
-            status.textContent = '● Verbindungstest fehlgeschlagen';
-        } finally {
-            this.disabled = false;
-        }
-    });
+'use strict';
+let S = null;          // Zustand von /api/state
+let deviceFx = [];     // Effektliste vom WLED
+let selectedKey = '1';
+const DAYS = ['Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So'];
+const $ = id => document.getElementById(id);
+const val = id => $(id).value;
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'}[c]));
+const clone = o => JSON.parse(JSON.stringify(o));
+const shortName = f => f.replace(/^mp3\//, '');
+
+function toast(message, bad) {
+  const t = $('toast'); t.textContent = message; t.className = 'show' + (bad ? ' bad' : '');
+  clearTimeout(t.timer); t.timer = setTimeout(() => t.className = '', bad ? 5000 : 2200);
+}
+async function api(method, url, body) {
+  const options = {method, headers: {}};
+  if (body instanceof FormData) options.body = body;
+  else if (body !== undefined) { options.body = JSON.stringify(body); options.headers['Content-Type'] = 'application/json'; }
+  let data = {};
+  try { const r = await fetch(url, options); data = await r.json().catch(() => ({})); if (!r.ok && data.success === undefined) data = {success: false, error: 'HTTP ' + r.status}; }
+  catch (e) { data = {success: false, error: 'Keine Verbindung zum Wecker'}; }
+  if (data.success === false) toast(data.error || 'Fehler', true);
+  return data;
+}
+async function saveSection(section, value, quiet) {
+  const r = await api('PUT', '/api/settings/' + section, value);
+  if (r.success) { S.settings[section] = r.value; if (!quiet) toast('Gespeichert ✓'); await refresh(); }
+  return r;
+}
+async function resetSection(section) {
+  if (!confirm('Eigene Änderungen verwerfen und Standard aus config/defaults.json laden?')) return;
+  const r = await api('DELETE', '/api/settings/' + section);
+  if (r.success) { toast('Standard wiederhergestellt'); await refresh(true); }
+}
+async function control(event, value) {
+  const r = await api('POST', '/api/control', {event, value});
+  if (r.success) { toast('An den Wecker gesendet'); setTimeout(refresh, 700); }
+}
+function options(list, selected) {
+  return list.map(([value, text]) => `<option value="${esc(value)}"${value === selected ? ' selected' : ''}>${esc(text)}</option>`).join('');
+}
+function fileOptions(selected) {
+  const files = S.music_files.includes(selected) || !selected ? S.music_files : [selected, ...S.music_files];
+  return options(files.map(f => [f, shortName(f)]), selected);
+}
+
+// ---------- Tabs ----------
+function initTabs() {
+  const nav = $('tabs');
+  document.querySelectorAll('section.tab').forEach(sec => {
+    const b = document.createElement('button');
+    b.textContent = sec.dataset.title; b.dataset.tab = sec.dataset.tab;
+    b.onclick = () => showTab(sec.dataset.tab);
+    nav.appendChild(b);
+  });
+  showTab(location.hash.slice(1) || 'overview');
+}
+function showTab(name) {
+  if (!document.querySelector(`section[data-tab="${name}"]`)) name = 'overview';
+  document.querySelectorAll('section.tab').forEach(s => s.classList.toggle('active', s.dataset.tab === name));
+  document.querySelectorAll('nav button').forEach(b => b.classList.toggle('active', b.dataset.tab === name));
+  history.replaceState(null, '', '#' + name);
+}
+
+// ---------- Übersicht ----------
+function renderOverview() {
+  const c = S.clock;
+  $('clock-status').innerHTML = c ? '<b>●</b> Wecker läuft' : '<b class="off">●</b> Wecker-Prozess nicht erreichbar';
+  const n = S.next_alarm;
+  if (n && S.settings.alarms_enabled) {
+    const at = new Date(n.at);
+    const day = at.toDateString() === new Date().toDateString() ? 'heute'
+      : at.toDateString() === new Date(Date.now() + 864e5).toDateString() ? 'morgen' : DAYS[(at.getDay() + 6) % 7];
+    $('next-alarm').textContent = at.toTimeString().slice(0, 5);
+    const h = Math.floor(n.in_minutes / 60), m = n.in_minutes % 60;
+    $('next-alarm-info').textContent = `${day} · ${n.label} · in ${h ? h + ' h ' : ''}${m} min`;
+  } else {
+    $('next-alarm').textContent = '–';
+    $('next-alarm-info').textContent = S.settings.alarms_enabled ? 'kein aktiver Wecker' : 'alle Wecker pausiert';
+  }
+  $('master-switch').checked = S.settings.alarms_enabled;
+  let now = 'Wecker-Prozess antwortet nicht – Abspielen/Testen geht erst, wenn alarmclock.service läuft.';
+  if (c) {
+    const phase = {light: '🌅 Licht-Vorlauf', music: '⏰ Wecker klingelt', snooze: '😴 Schlummern'}[c.phase];
+    now = phase ? `${phase}${c.alarm ? ' (' + c.alarm + ')' : ''}` : (c.playing ? '▶ Musik läuft' : 'Ruhe');
+    if (c.song) now += ' · ' + shortName(c.song);
+    if (c.notice) now += ' · „' + c.notice + '“';
+    if (document.activeElement !== $('volume')) $('volume').value = c.volume;
+    $('volume-value').textContent = c.volume + ' %';
+  }
+  $('now-playing').textContent = now;
+  $('today-song').textContent = `${shortName(S.today.file)} – „${S.today.message}“`;
+}
+$('master-switch').onchange = e => saveSection('alarms_enabled', e.target.checked);
+$('volume').onchange = e => control('volume', Number(e.target.value));
+$('volume').oninput = e => $('volume-value').textContent = e.target.value + ' %';
+
+// ---------- Wecker ----------
+let alarms = [];
+function renderAlarms() {
+  $('alarm-list').innerHTML = alarms.map((a, i) => `
+    <div class="alarm">
+      <label class="switch sw"><input type="checkbox" ${a.enabled ? 'checked' : ''} onchange="alarms[${i}].enabled=this.checked"></label>
+      <input class="time" type="time" value="${esc(a.time)}" onchange="alarms[${i}].time=this.value">
+      <input class="label" value="${esc(a.label)}" maxlength="30" placeholder="Name" onchange="alarms[${i}].label=this.value">
+      <button class="small danger del" title="Löschen" onclick="alarms.splice(${i},1);renderAlarms()">✕</button>
+      <div class="days">${DAYS.map((d, n) =>
+        `<button class="${a.days.includes(n) ? 'on' : ''}" onclick="toggleDay(${i},${n})">${d}</button>`).join('')}
+        <button class="small" style="width:auto;padding:6px 10px" onclick="setDays(${i},[0,1,2,3,4])">Mo–Fr</button>
+        <button class="small" style="width:auto;padding:6px 10px" onclick="setDays(${i},[0,1,2,3,4,5,6])">täglich</button>
+      </div>
+    </div>`).join('') || '<p class="muted">Noch kein Wecker.</p>';
+}
+function toggleDay(i, d) {
+  const days = alarms[i].days; const k = days.indexOf(d);
+  k < 0 ? days.push(d) : days.splice(k, 1); days.sort(); renderAlarms();
+}
+function setDays(i, days) { alarms[i].days = days.slice(); renderAlarms(); }
+function addAlarm() { alarms.push({label: 'Wecker', enabled: true, time: '07:00', days: [0, 1, 2, 3, 4]}); renderAlarms(); }
+async function saveAlarms() {
+  if (alarms.some(a => a.enabled && !a.days.length)) { toast('Ein aktiver Wecker hat keinen Wochentag', true); return; }
+  const r = await saveSection('alarms', alarms);
+  if (r.success) { alarms = clone(S.settings.alarms); renderAlarms(); }
+}
+
+// ---------- Weckprogramm ----------
+let wake = {};
+const WAKE_FIELDS = {
+  'wake-light': [
+    ['effect', 'Lichteffekt', 'effect'],
+    ['light_lead_minutes', 'Licht startet vor der Weckzeit', 'range', 0, 60, 1, 'min'],
+    ['light_ramp_minutes', 'Heller werden über', 'range', 0, 60, 1, 'min'],
+    ['brightness_start', 'Helligkeit Start', 'range', 1, 100, 1, '%'],
+    ['brightness_end', 'Helligkeit Ende', 'range', 1, 100, 1, '%'],
+  ],
+  'wake-music': [
+    ['music', 'Musik', 'select', [['daily', 'Tageslied'], ['random', 'Zufallssong'], ['none', 'keine (nur Licht)']]],
+    ['volume_start', 'Lautstärke Start', 'range', 0, 100, 5, '%'],
+    ['volume_end', 'Lautstärke Ende', 'range', 0, 100, 5, '%'],
+    ['volume_ramp_seconds', 'Lauter werden über', 'range', 0, 300, 10, 's'],
+  ],
+  'wake-end': [
+    ['stop_after_song', 'Nach dem Lied aufhören', 'bool'],
+    ['max_minutes', 'Spätestens aus nach', 'range', 1, 60, 1, 'min'],
+    ['light_end', 'Licht danach', 'select', [['off', 'langsam ausschalten'], ['keep', 'anlassen']]],
+    ['snooze_minutes', 'Schlummerzeit', 'range', 1, 30, 1, 'min'],
+    ['snooze_any_key', 'Jede Taste = Schlummern', 'bool'],
+    ['backlight', 'Display beim Wecken an', 'bool'],
+    ['show_weather', 'Wetter im Display', 'bool'],
+  ],
+};
+function renderWake() {
+  for (const [box, fields] of Object.entries(WAKE_FIELDS)) {
+    $(box).innerHTML = fields.map(([key, title, kind, ...o]) => {
+      const v = wake[key];
+      if (kind === 'bool') return `<label class="switch"><input type="checkbox" ${v ? 'checked' : ''} onchange="wake.${key}=this.checked;renderTimeline()"> ${title}</label>`;
+      if (kind === 'select') return `<label class="field">${title}<select onchange="wake.${key}=this.value;renderTimeline()">${options(o[0], v)}</select></label>`;
+      if (kind === 'effect') return `<label class="field">${title}<select onchange="wake.${key}=this.value;renderTimeline()">${options([['', '– kein Licht –'], ...S.settings.effects.map(e => [e.id, e.name])], v)}</select></label>`;
+      const [min, max, step, unit] = o;
+      return `<label class="field">${title} <span class="v" id="wv-${key}">${v} ${unit}</span>
+        <input type="range" min="${min}" max="${max}" step="${step}" value="${v}"
+          oninput="wake.${key}=Number(this.value);$('wv-${key}').textContent=this.value+' ${unit}';renderTimeline()"></label>`;
+    }).join('');
+  }
+  renderTimeline();
+}
+function renderTimeline() {
+  const w = wake, t = (m) => (m >= 0 ? '+' : '−') + Math.abs(m) + ' min';
+  const lines = [];
+  const eff = S.settings.effects.find(e => e.id === w.effect);
+  if (eff) {
+    const lead = w.light_lead_minutes;
+    lines.push(`<b>${lead ? t(-lead) : 'Weckzeit'}</b> Licht „${esc(eff.name)}“ mit ${w.brightness_start} %`);
+    lines.push(`<b>${t(w.light_ramp_minutes - lead)}</b> Licht erreicht ${w.brightness_end} %`);
+  }
+  if (w.music !== 'none') {
+    lines.push(`<b>Weckzeit</b> ${w.music === 'random' ? 'Zufallssong' : 'Tageslied'} mit ${w.volume_start} %, in ${w.volume_ramp_seconds} s auf ${w.volume_end} %`);
+    lines.push(`<b>Ende</b> ${w.stop_after_song ? 'wenn das Lied vorbei ist, ' : 'Lied wiederholt sich, '}spätestens nach ${w.max_minutes} min`);
+  } else lines.push(`<b>Ende</b> nach ${w.max_minutes} min`);
+  if (eff) lines.push(`Danach: Licht ${w.light_end === 'off' ? 'wird ausgeblendet' : 'bleibt an'}`);
+  lines.push(`Rechter Knopf = aus · ${w.snooze_any_key ? 'jede Taste' : 'Schlummer-Taste'} = ${w.snooze_minutes} min schlummern`);
+  $('wake-timeline').innerHTML = lines.map(l => `<div>${l}</div>`).join('');
+}
+async function saveWake() { const r = await saveSection('wake', wake); if (r.success) wake = clone(S.settings.wake); }
+
+// ---------- Tasten ----------
+let keys = {};
+const ACTIONS = [
+  ['none', 'nichts'], ['effect', 'Lichteffekt'], ['light', 'Licht an/aus'], ['music', 'Musik'],
+  ['weather', 'Wetter im Display'], ['display', 'Display an/aus'], ['snooze', 'Schlummern'],
+  ['alarm_toggle', 'Wecker an/aus'], ['wake_test', 'Weckprogramm testen'],
+  ['alexa', 'Alexa (Sprachbefehl)'], ['http', 'HTTP-Aufruf (z. B. Alexa-Routine)'], ['home_assistant', 'Home Assistant'],
+];
+const ACTION_NAME = Object.fromEntries(ACTIONS);
+function keyLabel(a) {
+  if (!a || a.type === 'none') return '–';
+  if (a.label) return a.label;
+  if (a.type === 'effect') return (S.settings.effects.find(e => e.id === a.effect) || {}).name || a.effect;
+  if (a.type === 'music') return {today: 'Tageslied', random: 'Zufallssong', toggle: 'Musik an/aus', stop: 'Musik stopp'}[a.source];
+  if (a.type === 'light') return {toggle: 'Licht an/aus', on: 'Licht an', off: 'Licht aus'}[a.mode];
+  if (a.type === 'alexa') return 'Alexa: ' + (a.command === 'weather' ? 'Wetter' : a.text);
+  return ACTION_NAME[a.type];
+}
+function renderKeypad() {
+  $('keypad').innerHTML = S.keypad.flat().map(k => {
+    const a = keys[k];
+    const remote = ['alexa', 'http', 'home_assistant'].includes(a.type);
+    return `<button class="key${k === selectedKey ? ' sel' : ''}${remote ? ' remote' : ''}" onclick="selectKey('${k}')"><b>${esc(k)}</b><small>${esc(keyLabel(a))}</small></button>`;
+  }).join('');
+}
+function selectKey(k) { selectedKey = k; renderKeypad(); renderKeyEditor(); }
+function keyField(title, key, html) { return `<label class="field">${title}${html}</label>`; }
+function renderKeyEditor() {
+  const a = keys[selectedKey];
+  const set = (f) => `onchange="keys[selectedKey].${f}=this.value;renderKeypad()"`;
+  let fields = '';
+  if (a.type === 'effect') fields = keyField('Effekt', '', `<select ${set('effect')}>${options(S.settings.effects.map(e => [e.id, e.name]), a.effect)}</select>`);
+  if (a.type === 'light') fields = keyField('Modus', '', `<select ${set('mode')}>${options([['toggle', 'umschalten'], ['on', 'an'], ['off', 'aus']], a.mode)}</select>`);
+  if (a.type === 'music') fields = keyField('Was', '', `<select ${set('source')}>${options([['random', 'Zufallssong'], ['today', 'Tageslied'], ['toggle', 'an/aus'], ['stop', 'stopp']], a.source)}</select>`);
+  if (a.type === 'http') fields =
+    keyField('URL', '', `<input value="${esc(a.url)}" placeholder="https://…" ${set('url')}>`) +
+    keyField('Methode', '', `<select ${set('method')}>${options([['GET', 'GET'], ['POST', 'POST']], a.method)}</select>`) +
+    keyField('Body (nur POST)', '', `<input value="${esc(a.body)}" ${set('body')}>`);
+  if (a.type === 'home_assistant') fields =
+    keyField('Service', '', `<input value="${esc(a.service)}" placeholder="light.toggle" ${set('service')}>`) +
+    keyField('Entity-ID', '', `<input value="${esc(a.entity_id)}" placeholder="light.deckenlampe" ${set('entity_id')}>`);
+  if (a.type === 'alexa') fields =
+    keyField('Echo', '', `<input value="${esc(a.device)}" list="alexa-devices" placeholder="Standard: ${esc(S.settings.alexa.default_device || 'nicht gesetzt')}" ${set('device')}>`) +
+    keyField('Art', '', `<select onchange="keys[selectedKey].command=this.value;renderKeypad();renderKeyEditor()">${options([['text', 'Sprachbefehl'], ['routine', 'Routine (Name)'], ['speak', 'Vorlesen'], ['weather', 'Wetterbericht']], a.command)}</select>`) +
+    (a.command === 'weather' ? '' : keyField(a.command === 'routine' ? 'Routine-Name' : a.command === 'speak' ? 'Text zum Vorlesen' : 'Befehl (wie gesprochen, ohne „Alexa“)', '', `<input value="${esc(a.text)}" placeholder="spiele Amazon Music" ${set('text')}>`));
+  const remote = ['alexa', 'http', 'home_assistant'].includes(a.type);
+  $('key-editor').innerHTML = `
+    <h2>Taste ${esc(selectedKey)}</h2>
+    <div class="grid">
+      ${keyField('Aktion', '', `<select onchange="changeKeyType(this.value)">${options(ACTIONS, a.type)}</select>`)}
+      ${fields}
+      ${a.type === 'none' ? '' : keyField('Anzeige-Text (optional)', '', `<input value="${esc(a.label)}" maxlength="40" placeholder="${esc(keyLabel({...a, label: ''}))}" ${set('label')}>`)}
+    </div>
+    ${a.type === 'alexa' && !S.alexa_script ? '<div class="help">alexa_remote_control.sh ist auf dem Pi noch nicht installiert – siehe README „Alexa“. Alternativ HTTP-Aufruf mit Routine-Trigger-URL.</div>' : ''}
+    <div class="row end">
+      <button onclick="testKey(false)">Am Wecker testen</button>
+      ${remote ? '<button onclick="testKey(true)">Direkt testen (mit Rückmeldung)</button>' : ''}
+      <span class="spacer"></span>
+      <button class="primary" onclick="saveKeys()">Alle Tasten speichern</button>
+    </div>`;
+}
+const KEY_DEFAULTS = {
+  effect: () => ({effect: (S.settings.effects[0] || {}).id}), light: () => ({mode: 'toggle'}),
+  music: () => ({source: 'random'}), http: () => ({url: '', method: 'GET', body: ''}),
+  home_assistant: () => ({service: 'light.toggle', entity_id: ''}),
+  alexa: () => ({device: '', command: 'text', text: ''}),
+};
+function changeKeyType(type) {
+  keys[selectedKey] = {type, ...(KEY_DEFAULTS[type] ? KEY_DEFAULTS[type]() : {})};
+  renderKeypad(); renderKeyEditor();
+}
+async function testKey(direct) {
+  const r = await api('POST', '/api/action/test' + (direct ? '?direct=1' : ''), keys[selectedKey]);
+  if (r.success) toast(r.message || 'Ausgelöst');
+}
+async function saveKeys() { const r = await saveSection('keys', keys); if (r.success) keys = clone(S.settings.keys); renderKeypad(); renderKeyEditor(); }
+
+// ---------- Musik ----------
+let music = {};
+let shownFiles = '';
+function renderFiles() {
+  shownFiles = JSON.stringify(S.music_files);
+  $('file-list').innerHTML = S.music_files.map(f => `<li><span title="${esc(f)}">${esc(shortName(f))}</span>
+    <button class="small" title="Am Wecker abspielen" onclick="control('play_file','${esc(f)}')">▶</button>
+    <button class="small" title="Im Browser anhören" onclick="listen('${esc(f)}')">🎧</button>
+    <button class="small danger" title="Löschen" onclick="deleteFile('${esc(f)}')">✕</button></li>`).join('') || '<li class="muted">Keine MP3s.</li>';
+}
+function renderMusic() {
+  renderFiles();
+  $('default-song').innerHTML = fileOptions(music.default_song);
+  $('default-message').value = music.default_message;
+  $('date-list').innerHTML = music.dates.map((d, i) => `<tr>
+    <td><input value="${esc(d.date)}" placeholder="MM-DD" onchange="music.dates[${i}].date=this.value"></td>
+    <td><select onchange="music.dates[${i}].file=this.value">${fileOptions(d.file)}</select></td>
+    <td><input value="${esc(d.message)}" onchange="music.dates[${i}].message=this.value"></td>
+    <td><button class="small danger" onclick="music.dates.splice(${i},1);renderMusic()">✕</button></td></tr>`).join('');
+  $('rotation-list').innerHTML = music.rotation.map((d, i) => `<tr>
+    <td><select onchange="music.rotation[${i}].file=this.value">${fileOptions(d.file)}</select></td>
+    <td><input value="${esc(d.message)}" onchange="music.rotation[${i}].message=this.value"></td>
+    <td><button class="small danger" onclick="music.rotation.splice(${i},1);renderMusic()">✕</button></td></tr>`).join('');
+}
+$('default-song').onchange = e => music.default_song = e.target.value;
+$('default-message').onchange = e => music.default_message = e.target.value;
+function addDate() { music.dates.push({date: '', file: S.music_files[0] || '', message: ''}); renderMusic(); }
+function addRotation() { music.rotation.push({file: S.music_files[0] || '', message: ''}); renderMusic(); }
+async function saveMusic() { const r = await saveSection('music', music); if (r.success) { music = clone(S.settings.music); renderMusic(); } }
+function listen(f) { const p = $('player'); p.style.display = 'block'; p.src = '/api/music/file?file=' + encodeURIComponent(f); p.play(); }
+async function upload() {
+  const files = $('upload').files;
+  if (!files.length) { toast('Erst Dateien wählen', true); return; }
+  const form = new FormData(); for (const f of files) form.append('file', f);
+  toast('Lade hoch …');
+  const r = await api('POST', '/api/music', form);
+  if (r.success) { toast(`${r.files.length} Datei(en) hochgeladen`); $('upload').value = ''; await refresh(); renderMusic(); }
+}
+async function deleteFile(f) {
+  if (!confirm(shortName(f) + ' löschen?')) return;
+  const r = await api('DELETE', '/api/music?file=' + encodeURIComponent(f));
+  if (r.success) { toast('Gelöscht'); await refresh(); renderMusic(); }
+}
+
+// ---------- Licht ----------
+let effects = [];
+function segOf(e) { if (!Array.isArray(e.state.seg) || !e.state.seg.length) e.state.seg = [{id: 0}]; return e.state.seg[0]; }
+function rgbHex(c) { return '#' + (c || [255, 160, 70]).slice(0, 3).map(v => v.toString(16).padStart(2, '0')).join(''); }
+function fxName(fx) { const d = deviceFx.find(x => x.fx === fx); return d ? d.name + (d.audio === 'v' ? ' ♪' : d.audio === 'f' ? ' ♫' : '') : ''; }
+function renderEffects() {
+  $('effect-list').innerHTML = effects.map((e, i) => {
+    const off = e.state.on === false;
+    const seg = off ? {} : segOf(e);
+    const col = seg.col && seg.col[0];
+    return `<div class="effect">
+      <label class="field">Name<input value="${esc(e.name)}" maxlength="40" onchange="effects[${i}].name=this.value"></label>
+      ${off ? '<div class="muted">schaltet das Licht aus</div><div></div><div></div>' : `
+      <label class="field">WLED-Effekt (Nr.) <span class="tag">${esc(fxName(seg.fx))}</span>
+        <input type="number" min="0" max="255" list="fx-list" value="${seg.fx ?? ''}" onchange="setFx(${i}, this.value)"></label>
+      <label class="field">Helligkeit<input type="number" min="1" max="255" value="${e.state.bri ?? ''}" placeholder="wie Gerät" onchange="setBri(${i}, this.value)"></label>
+      <label class="field">Farbe<input type="color" value="${rgbHex(col)}" onchange="setColor(${i}, this.value)"></label>`}
+      <div class="row">
+        <button class="small" onclick="previewEffect(${i})" title="Am WLED zeigen">👁</button>
+        <button class="small danger" onclick="removeEffect(${i})">✕</button>
+      </div>
+      <details style="grid-column:1/-1"><summary>ID <code>${esc(e.id)}</code> · JSON</summary>
+        <textarea onchange="setState(${i}, this.value)">${esc(JSON.stringify(e.state))}</textarea></details>
+    </div>`;
+  }).join('');
+}
+function setFx(i, v) { segOf(effects[i]).fx = Number(v); renderEffects(); }
+function setBri(i, v) { if (v === '') delete effects[i].state.bri; else effects[i].state.bri = Number(v); }
+function setColor(i, hex) { const n = parseInt(hex.slice(1), 16); segOf(effects[i]).col = [[n >> 16, (n >> 8) & 255, n & 255]]; }
+function setState(i, text) { try { effects[i].state = JSON.parse(text); renderEffects(); } catch (e) { toast('Ungültiges JSON', true); } }
+function removeEffect(i) {
+  const id = effects[i].id;
+  const used = Object.entries(keys).filter(([, a]) => a.type === 'effect' && a.effect === id).map(([k]) => k);
+  if (used.length || wake.effect === id) { toast(`Wird noch benutzt (${[...used.map(k => 'Taste ' + k), wake.effect === id ? 'Weckprogramm' : ''].filter(Boolean).join(', ')})`, true); return; }
+  effects.splice(i, 1); renderEffects();
+}
+function addEffect() {
+  const name = prompt('Name des Effekts:'); if (!name) return;
+  let id = name.toLowerCase().normalize('NFD').replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '').slice(0, 30) || 'effekt';
+  while (effects.some(e => e.id === id)) id += '_';
+  effects.push({id, name, state: {on: true, bri: 160, seg: [{id: 0, fx: 0, col: [[255, 160, 70]]}]}});
+  renderEffects();
+}
+async function previewEffect(i) { const r = await api('POST', '/api/wled/preview', effects[i].state); if (r.success) toast('Am WLED gezeigt'); }
+async function saveEffects() { const r = await saveSection('effects', effects); if (r.success) { effects = clone(S.settings.effects); renderEffects(); renderKeypad(); } }
+async function loadDeviceEffects() {
+  $('fx-status').textContent = 'lade …';
+  const r = await api('GET', '/api/wled/effects');
+  if (!r.success) { $('fx-status').textContent = ''; return; }
+  deviceFx = r.effects;
+  $('fx-list').innerHTML = deviceFx.map(d => `<option value="${d.fx}">${esc(d.name)}${d.audio === 'v' ? ' ♪' : d.audio === 'f' ? ' ♫' : ''}${d.matrix ? ' (2D)' : ''}</option>`).join('');
+  const audio = deviceFx.filter(d => d.audio && !d.matrix).length;
+  $('fx-status').textContent = `${deviceFx.length} Effekte, ${audio} mit Mikrofon`;
+  renderEffects();
+}
+function renderWled() {
+  const w = S.settings.wled;
+  $('wled-host').value = w.host; $('wled-timeout').value = w.timeout; $('wled-enabled').checked = w.enabled;
+}
+async function saveWled() {
+  await saveSection('wled', {enabled: $('wled-enabled').checked, host: val('wled-host'), timeout: Number(val('wled-timeout'))});
+}
+async function testWled() {
+  $('wled-status').textContent = 'prüfe …';
+  const r = await fetch('/api/wled/test').then(r => r.json()).catch(() => ({success: false, error: 'keine Antwort'}));
+  $('wled-status').innerHTML = r.success ? `<span style="color:var(--ok)">● erreichbar</span> ${esc(r.host)} · WLED ${esc(r.version || '?')} · ${r.leds || '?'} LEDs`
+    : `<span style="color:var(--bad)">● nicht erreichbar</span> ${esc(r.host || '')} (${esc(r.error)})`;
+}
+
+// ---------- Smart Home ----------
+function renderSmart() {
+  $('alexa-device').value = S.settings.alexa.default_device;
+  $('alexa-script').textContent = S.alexa_script ? 'installiert ✓' : 'nicht installiert';
+  $('ha-url').value = S.settings.home_assistant.url;
+  $('ha-token').value = '';
+  $('ha-token').placeholder = S.settings.home_assistant.token_set ? '•••••• (gesetzt, leer lassen = behalten)' : 'noch kein Token';
+  const w = S.settings.weather;
+  $('weather-location').value = w.location; $('weather-lat').value = w.latitude ?? ''; $('weather-lon').value = w.longitude ?? '';
+}
+async function saveHa(clear) {
+  await saveSection('home_assistant', {url: val('ha-url'), token: val('ha-token'), clear_token: clear});
+}
+async function loadAlexaDevices() {
+  $('alexa-status').textContent = 'frage ab …';
+  const r = await api('GET', '/api/alexa/devices');
+  $('alexa-status').textContent = r.success ? r.devices.length + ' Geräte' : '';
+  if (r.success) $('alexa-devices').innerHTML = r.devices.map(d => `<option value="${esc(d)}">`).join('');
+}
+async function searchPlace() {
+  const r = await api('GET', '/api/weather/search?q=' + encodeURIComponent(val('weather-query')));
+  if (!r.success) return;
+  $('weather-results').innerHTML = r.places.map((p, i) => `<button class="small" onclick='pickPlace(${JSON.stringify(p).replace(/'/g, '&#39;')})'>${esc(p.name)}</button>`).join('') || '<span class="muted">nichts gefunden</span>';
+}
+function pickPlace(p) { $('weather-location').value = p.name; $('weather-lat').value = p.latitude; $('weather-lon').value = p.longitude; $('weather-results').innerHTML = ''; }
+async function saveWeather() {
+  const lat = val('weather-lat'), lon = val('weather-lon');
+  await saveSection('weather', {location: val('weather-location'), latitude: lat === '' ? null : Number(lat), longitude: lon === '' ? null : Number(lon)});
+}
+async function testWeather() {
+  $('weather-status').textContent = 'rufe ab …';
+  const r = await api('GET', '/api/weather/test');
+  $('weather-status').textContent = r.success ? r.text : '';
+}
+
+// ---------- Anzeige ----------
+let greetings = [];
+function renderGreetings() {
+  $('greeting-list').innerHTML = greetings.map((g, i) => `<tr>
+    <td><input type="time" value="${esc(g.start)}" onchange="greetings[${i}].start=this.value"></td>
+    <td><input type="time" value="${esc(g.end)}" onchange="greetings[${i}].end=this.value"></td>
+    <td><input value="${esc(g.text)}" maxlength="60" onchange="greetings[${i}].text=this.value"></td>
+    <td><input type="checkbox" ${g.backlight ? 'checked' : ''} onchange="greetings[${i}].backlight=this.checked"></td>
+    <td><button class="small danger" onclick="greetings.splice(${i},1);renderGreetings()">✕</button></td></tr>`).join('');
+}
+function addGreeting() { greetings.push({start: '12:00', end: '13:00', text: '', backlight: true}); renderGreetings(); }
+async function saveGreetings() { const r = await saveSection('greetings', greetings); if (r.success) greetings = clone(S.settings.greetings); }
+
+// ---------- Laden ----------
+async function refresh(all) {
+  const r = await fetch('/api/state').then(r => r.json()).catch(() => null);
+  if (!r) { $('clock-status').innerHTML = '<b class="off">●</b> Weboberfläche nicht erreichbar'; return; }
+  const first = !S;
+  S = r;
+  renderOverview();
+  if (first || all) {
+    alarms = clone(S.settings.alarms); wake = clone(S.settings.wake); keys = clone(S.settings.keys);
+    music = clone(S.settings.music); effects = clone(S.settings.effects); greetings = clone(S.settings.greetings);
+    renderAlarms(); renderWake(); renderKeypad(); renderKeyEditor(); renderMusic(); renderEffects();
+    renderWled(); renderSmart(); renderGreetings();
+  } else {
+    // Nur die Dateiliste nachziehen; Formulare nicht anfassen (Fokus/ungespeicherte Eingaben).
+    if (JSON.stringify(S.music_files) !== shownFiles) renderFiles();
+  }
+}
+initTabs();
+refresh(true);
+setInterval(() => { if (!document.hidden) refresh(); }, 5000);
 </script>
 </body>
 </html>

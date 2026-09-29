@@ -49,7 +49,7 @@ def lcd_set_backlight(toggle=False, state=None, force=False, reset=False):
 
     if reset:
         # Manuelle Uebersteuerung aufheben: ab jetzt entscheiden wieder die
-        # Greeting-Zeiten aus config.GREETINGS ueber das Backlight.
+        # Begruessungszeiten (Weboberflaeche) ueber das Backlight.
         _backlight_manual = False
         _backlight_state = True
     elif toggle:

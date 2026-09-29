@@ -1,0 +1,40 @@
+{
+  "_hinweis": "Feste Hardware- und Betriebswerte. Von Hand pflegen, Neustart noetig. Adressen als \"0x..\"-Text oder Zahl. Alles, was die Weboberflaeche aendert, steht in defaults.json/settings.json.",
+  "lcd": {
+    "address": "0x27",
+    "i2c_port": 1,
+    "cols": 16,
+    "rows": 2
+  },
+  "inputs": {
+    "module": "controls_mcp",
+    "i2c_port": 1,
+    "mcp23017_address": "0x21",
+    "keypad_address": "0x20",
+    "button_hold_seconds": 2.0,
+    "effect_fast_seconds": 0.15,
+    "effect_fast_steps": 10,
+    "legacy_button_enabled": false,
+    "legacy_button_pin": 17
+  },
+  "audio": {
+    "alsa_device": "plughw:3,0",
+    "volume_step": 5,
+    "music_dir": "mp3",
+    "click_sound": "sounds/click.wav"
+  },
+  "web": {
+    "host": "0.0.0.0",
+    "port": 8080,
+    "max_upload_mb": 32
+  },
+  "ipc": {
+    "host": "127.0.0.1",
+    "port": 8099
+  },
+  "alexa": {
+    "_hinweis": "Pfad zu alexa_remote_control.sh (github.com/thorsten-gehrig/alexa-remote-control). Absichtlich nicht in der Weboberflaeche aenderbar.",
+    "script": "/home/pi/alexa-remote-control/alexa_remote_control.sh"
+  },
+  "debug": true
+}

@@ -1,0 +1,99 @@
+{
+  "_hinweis": "Standardwerte fuer alles, was die Weboberflaeche aendern kann. Aenderungen aus der Weboberflaeche landen in config/settings.json und haben Vorrang (Objekte werden zusammengefuehrt, Listen komplett ersetzt).",
+  "alarms_enabled": true,
+  "alarms": [
+    {"id": "wecker", "label": "Wecker", "enabled": true, "time": "06:15", "days": [0, 1, 2, 3, 4, 5, 6]}
+  ],
+  "wake": {
+    "effect": "morgenlicht",
+    "light_lead_minutes": 0,
+    "light_ramp_minutes": 2,
+    "brightness_start": 3,
+    "brightness_end": 80,
+    "music": "daily",
+    "volume_start": 20,
+    "volume_end": 70,
+    "volume_ramp_seconds": 60,
+    "stop_after_song": true,
+    "max_minutes": 5,
+    "light_end": "off",
+    "snooze_minutes": 9,
+    "snooze_any_key": true,
+    "backlight": true,
+    "show_weather": false
+  },
+  "music": {
+    "default_song": "mp3/xmas/default.mp3",
+    "default_message": "Guten Morgen!",
+    "dates": [
+      {"date": "12-11", "file": "mp3/xmas/maria.mp3", "message": "Happy Xmas"},
+      {"date": "12-12", "file": "mp3/xmas/frosty_snowman.mp3", "message": "2"},
+      {"date": "12-13", "file": "mp3/xmas/jingle_bells..mp3", "message": "3"},
+      {"date": "12-14", "file": "mp3/xmas/last_christmas.mp3", "message": "4"},
+      {"date": "12-15", "file": "mp3/xmas/let_it_snow.mp3", "message": "5"},
+      {"date": "12-16", "file": "mp3/xmas/morgen_weihnachtsmann.mp3", "message": "6"},
+      {"date": "12-17", "file": "mp3/xmas/oh_tannenbaum.mp3", "message": "7"},
+      {"date": "12-18", "file": "mp3/xmas/otto_weihnachtsbaeckerei.mp3", "message": "8"},
+      {"date": "12-19", "file": "mp3/xmas/polar_express.mp3", "message": "9"},
+      {"date": "12-20", "file": "mp3/xmas/santa_claus_town.mp3", "message": "10"},
+      {"date": "12-21", "file": "mp3/xmas/under_mistletoe.mp3", "message": "11"},
+      {"date": "12-22", "file": "mp3/xmas/zuckowski_weihnachtsbaeckerei.mp3", "message": "12"}
+    ],
+    "rotation": [
+      {"file": "mp3/xmas/maria.mp3", "message": "Heute ist dein Tag!"},
+      {"file": "mp3/xmas/frosty_snowman.mp3", "message": "Ein Schritt nach dem anderen."},
+      {"file": "mp3/xmas/jingle_bells..mp3", "message": "Mach etwas Schoenes."},
+      {"file": "mp3/xmas/last_christmas.mp3", "message": "Neuer Tag, neues Glueck!"},
+      {"file": "mp3/xmas/let_it_snow.mp3", "message": "Nimm dir Zeit zum Lachen."},
+      {"file": "mp3/xmas/morgen_weihnachtsmann.mp3", "message": "Kleine Schritte zaehlen."},
+      {"file": "mp3/xmas/oh_tannenbaum.mp3", "message": "Bleib neugierig!"},
+      {"file": "mp3/xmas/otto_weihnachtsbaeckerei.mp3", "message": "Du kannst etwas bewegen."},
+      {"file": "mp3/xmas/polar_express.mp3", "message": "Zeit fuer neue Ideen."},
+      {"file": "mp3/xmas/santa_claus_town.mp3", "message": "Geniesse den Augenblick."},
+      {"file": "mp3/xmas/under_mistletoe.mp3", "message": "Heute darf leicht sein."},
+      {"file": "mp3/xmas/zuckowski_weihnachtsbaeckerei.mp3", "message": "Schoen, dass du da bist!"}
+    ]
+  },
+  "greetings": [
+    {"start": "06:00", "end": "10:00", "text": "Guten Morgen", "backlight": true},
+    {"start": "10:00", "end": "14:00", "text": "Guten Mittag", "backlight": true},
+    {"start": "14:00", "end": "18:00", "text": "Guten Tag", "backlight": true},
+    {"start": "18:00", "end": "20:30", "text": "Guten Abend", "backlight": true},
+    {"start": "20:30", "end": "06:00", "text": "Gute Nacht", "backlight": false}
+  ],
+  "wled": {
+    "enabled": true,
+    "host": "wled.local",
+    "timeout": 3.0
+  },
+  "keys": {
+    "1": {"type": "effect", "effect": "solid"},
+    "2": {"type": "effect", "effect": "breathe"},
+    "3": {"type": "effect", "effect": "colorloop"},
+    "4": {"type": "effect", "effect": "rainbow"},
+    "5": {"type": "effect", "effect": "theater"},
+    "6": {"type": "effect", "effect": "chase_rainbow"},
+    "7": {"type": "effect", "effect": "candle"},
+    "8": {"type": "effect", "effect": "fire_2012"},
+    "9": {"type": "effect", "effect": "twinklefox"},
+    "0": {"type": "effect", "effect": "off"},
+    "*": {"type": "music", "source": "random"},
+    "#": {"type": "effect", "effect": "musik"},
+    "A": {"type": "home_assistant", "label": "Deckenlampe", "service": "light.toggle", "entity_id": "light.deckenlampe"},
+    "B": {"type": "alexa", "label": "Amazon Music", "device": "", "command": "text", "text": "spiele meine Musik von Amazon Music"},
+    "C": {"type": "weather"},
+    "D": {"type": "display"}
+  },
+  "home_assistant": {
+    "url": "",
+    "token": ""
+  },
+  "alexa": {
+    "default_device": ""
+  },
+  "weather": {
+    "location": "",
+    "latitude": null,
+    "longitude": null
+  }
+}
