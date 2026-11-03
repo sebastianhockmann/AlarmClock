@@ -2,11 +2,13 @@
 
 Alles wird live aus settings gelesen; die Weboberflaeche kann jederzeit
 aendern. Jeder Wecker loest pro Datum hoechstens einmal aus (Sperre im
-Speicher, gilt bis zum Neustart).
+Speicher, gilt bis zum Neustart). alarm['calendar'] schraenkt die Wochentage
+weiter ein: 'school' = nur Schultage in Thueringen (school_calendar).
 """
 from datetime import date, datetime, timedelta
 import random
 import config
+import school_calendar
 import settings
 from util import parse_hhmm, time_in_range
 
@@ -43,9 +45,9 @@ class AlarmScheduler:
                 events.append(('alarm', alarm))
         return events
 
-    @staticmethod
-    def _matches(alarm, moment):
-        return moment.weekday() in alarm['days'] and moment.strftime('%H:%M') == alarm['time']
+    def _matches(self, alarm, moment):
+        return (moment.weekday() in alarm['days'] and moment.strftime('%H:%M') == alarm['time']
+                and school_calendar.matches(alarm['calendar'], moment.date(), self.store))
 
     def _claim(self, alarm, kind, day):
         key = (alarm['id'], kind, day)
@@ -71,17 +73,27 @@ def next_alarm(now, store=settings):
         if not alarm['enabled'] or not alarm['days']:
             continue
         clock = parse_hhmm(alarm['time'])
-        for offset in range(8):
+        # Bis zu 8 Wochen voraus: die Sommerferien dauern 6 Wochen.
+        for offset in range(57):
             day = now.date() + timedelta(days=offset)
             moment = datetime.combine(day, clock)
-            if moment > now and day.weekday() in alarm['days']:
+            if (moment > now and day.weekday() in alarm['days']
+                    and school_calendar.matches(alarm['calendar'], day, store)):
                 if best is None or moment < best[0]:
                     best = (moment, alarm)
                 break
     return best
 
 
-def describe_days(days):
+CALENDAR_TEXT = {'school': 'Schultage', 'free': 'freie Tage', 'before_school': 'vor Schultagen'}
+
+
+def describe_days(days, calendar='all'):
+    text = _describe_weekdays(days)
+    return f'{text}, {CALENDAR_TEXT[calendar]}' if calendar in CALENDAR_TEXT else text
+
+
+def _describe_weekdays(days):
     if sorted(days) == list(range(7)):
         return 'taeglich'
     if sorted(days) == list(range(5)):

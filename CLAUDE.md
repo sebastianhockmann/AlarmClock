@@ -37,6 +37,8 @@ so ask the user to run `sudo systemctl restart alarmclock.service alarmclock-web
 | `config/defaults.json` | defaults for every web-editable section | yes | hand |
 | `config/effects.json` | default effect library (numeric WLED `fx` IDs) | yes | hand |
 | `config/settings.json` | web UI overrides | no | web UI / `settings.save()` |
+| `config/school_holidays.json` | Thüringen school holidays seed (works offline) | yes | `tools/update_school_holidays.py` |
+| `config/school_holidays_cache.json` | same, refreshed daily from openholidaysapi.org | no | `school_calendar.HolidayUpdater` |
 
 - `config/__init__.py` loads `hardware.json` into module constants (`config.LCD_ADDRESS`, …),
   plus paths. Env overrides: `ALARM_ALSA_DEVICE`, `ALARM_DEBUG`, `ALARM_WEB_HOST/PORT`,
@@ -66,6 +68,17 @@ Modules:
   fully unit-testable with mocks.
 - `wake.py` — `WakeSession`: light ramp (full effect state + `bri` + `tt` every 2 s),
   volume ramp, end after song (`AudioPlayer.finished`) or `max_minutes`, snooze, light off.
+- `programs.py` — light programs (`programs` section: morning/evening light): `active(now)`
+  window + calendar of the start day, `ProgramRunner` ramps `bri` from wall-clock time
+  (restart resumes), fades off at `end`; `override()` on manual light input; paused while
+  a `WakeSession` has its own light.
+- `school_calendar.py` — Thüringen school days: computed public holidays, school holidays
+  from seed + cache file, `calendar.free_days`; `matches(rule, day)` for rules
+  `all|school|free|before_school` (alarms: `alarm['calendar']`, programs: `program['calendar']`).
+  Missing data = school day (better wake once too often).
+- `network.py` — live check: `not_connected(error)` (errno 113 etc., never timeouts),
+  `wait_reachable()`; `integrations._open()` waits and resends; `NetworkMonitor` thread
+  logs outages, status `network` in ipc status.
 - `scheduler.py` — `AlarmScheduler.due(now)` → `[('light'|'alarm', alarm)]`, one per alarm
   per date (in-memory), light lead handled across midnight; `next_alarm`, song selection
   (exact date → yearly date → rotation → default; or random from `mp3/`), greetings.

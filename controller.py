@@ -8,6 +8,7 @@ from datetime import timedelta
 import config
 import integrations
 import settings
+from programs import ProgramRunner
 from scheduler import (AlarmScheduler, get_random_item, get_today_wake_item, list_music,
                        wake_item)
 from wake import WakeSession, alexa_volume_command
@@ -29,7 +30,7 @@ LAMP_DEFAULT_PERCENT = 50
 class ClockController:
     def __init__(self, player, send_light, browser=None, backlight=None, emit=None,
                  store=settings, alarm_scheduler=None, weather=None, integration=None,
-                 alexa=None, dimmer=None):
+                 alexa=None, dimmer=None, programs=None):
         self.player = player
         self.send_light = send_light
         # Linker Drehknopf: alle Effekte des WLED-Geraets (lighting.EffectBrowser).
@@ -51,6 +52,8 @@ class ClockController:
         self.lamp = None
         self.dimmer = dimmer or integrations.LampDimmer(
             report=lambda message: self.emit('notice', message))
+        # Morgen-/Abendlicht nach Uhrzeit und Schulkalender (programs.py).
+        self.programs = programs or ProgramRunner(send_light, store)
         self.session = None
         self.active_item = None
         self.notice = ''
@@ -72,6 +75,7 @@ class ClockController:
         if self.session is not None and not self.session.tick(monotonic):
             self._debug('Weckvorgang zu Ende')
             self._end_session()
+        self._tick_programs(now, monotonic)
         session = self.session
         if session is not None and session.uses_alexa and not session.volume_manual:
             self.alexa_level = session.alexa_level
@@ -82,6 +86,22 @@ class ClockController:
             self.browse = None
         if self.lamp is not None and monotonic >= self.lamp['until']:
             self.lamp = None
+
+    def _tick_programs(self, now, monotonic):
+        # Macht das Weckprogramm selbst Licht, hat es Vorrang.
+        paused = self.session is not None and self.session.light_start is not None
+        label = self.programs.label
+        change = self.programs.tick(now, monotonic, paused)
+        if change == 'start':
+            self._debug(f'Lichtprogramm {self.programs.label} beginnt')
+            if self.browser is not None:
+                self.browser.power = True
+            if not self.alarm_active:
+                self._notify(self.programs.label)
+        elif change == 'end':
+            self._debug(f'Lichtprogramm {label} zu Ende')
+            if self.browser is not None:
+                self.browser.power = False
 
     def _new_session(self, alarm, now):
         program = self.store.get('wake')
@@ -164,9 +184,11 @@ class ClockController:
         if event == 'left_rotate' and self.lamp is not None:
             text = self._lamp_dim(int(value))
         elif event == 'left_rotate':
+            self.programs.override()
             text = self.browser.rotate(int(value), monotonic) if self.browser else None
             self._debug(f'Effekt: {text}')
         elif event == 'left_press':
+            self.programs.override()
             text = self.browser.toggle_power() if self.browser else None
             self._debug(f'Licht: {text}')
         elif event == 'key':
@@ -239,6 +261,8 @@ class ClockController:
         kind = action['type']
         if kind == 'none':
             return None
+        if kind in ('effect', 'light'):
+            self.programs.override()
         if kind == 'effect':
             effect = self.store.effect_by_id(action['effect'])
             if effect is None:
@@ -426,6 +450,7 @@ class ClockController:
         normal bedienbar ist.
         """
         self.stop()
+        self.programs.override()
         if self.browser is not None:
             self.browser.set_power(True)
         self.backlight(reset=True)
@@ -473,5 +498,6 @@ class ClockController:
                      if self.active_item else None),
             'playing': self.player.is_playing,
             'volume': self.player.volume,
+            'program': self.programs.label,
             'notice': self.notice if self.monotonic < self.notice_end else '',
         }

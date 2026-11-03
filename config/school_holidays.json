@@ -1,0 +1,97 @@
+[
+  {
+    "start": "2025-12-22",
+    "end": "2026-01-03",
+    "name": "Weihnachtsferien"
+  },
+  {
+    "start": "2026-02-16",
+    "end": "2026-02-21",
+    "name": "Winterferien"
+  },
+  {
+    "start": "2026-04-07",
+    "end": "2026-04-17",
+    "name": "Osterferien"
+  },
+  {
+    "start": "2026-05-15",
+    "end": "2026-05-15",
+    "name": "Schulfreier Tag"
+  },
+  {
+    "start": "2026-07-04",
+    "end": "2026-08-14",
+    "name": "Sommerferien"
+  },
+  {
+    "start": "2026-10-12",
+    "end": "2026-10-24",
+    "name": "Herbstferien"
+  },
+  {
+    "start": "2026-12-23",
+    "end": "2027-01-02",
+    "name": "Weihnachtsferien"
+  },
+  {
+    "start": "2027-02-01",
+    "end": "2027-02-06",
+    "name": "Winterferien"
+  },
+  {
+    "start": "2027-03-22",
+    "end": "2027-04-03",
+    "name": "Osterferien"
+  },
+  {
+    "start": "2027-05-07",
+    "end": "2027-05-07",
+    "name": "Schulfreier Tag"
+  },
+  {
+    "start": "2027-07-10",
+    "end": "2027-08-20",
+    "name": "Sommerferien"
+  },
+  {
+    "start": "2027-10-09",
+    "end": "2027-10-23",
+    "name": "Herbstferien"
+  },
+  {
+    "start": "2027-12-23",
+    "end": "2027-12-31",
+    "name": "Weihnachtsferien"
+  },
+  {
+    "start": "2028-02-07",
+    "end": "2028-02-12",
+    "name": "Winterferien"
+  },
+  {
+    "start": "2028-04-03",
+    "end": "2028-04-15",
+    "name": "Osterferien"
+  },
+  {
+    "start": "2028-05-26",
+    "end": "2028-05-26",
+    "name": "Schulfreier Tag"
+  },
+  {
+    "start": "2028-07-22",
+    "end": "2028-09-01",
+    "name": "Sommerferien"
+  },
+  {
+    "start": "2028-10-23",
+    "end": "2028-11-03",
+    "name": "Herbstferien"
+  },
+  {
+    "start": "2028-12-23",
+    "end": "2029-01-05",
+    "name": "Weihnachtsferien"
+  }
+]

@@ -2,10 +2,21 @@
   "_hinweis": "Standardwerte fuer alles, was die Weboberflaeche aendern kann. Aenderungen aus der Weboberflaeche landen in config/settings.json und haben Vorrang (Objekte werden zusammengefuehrt, Listen komplett ersetzt).",
   "alarms_enabled": true,
   "alarms": [
-    {"id": "wecker", "label": "Wecker", "enabled": true, "time": "06:15", "days": [0, 1, 2, 3, 4, 5, 6]}
+    {"id": "wecker", "label": "Schule", "enabled": true, "time": "06:15", "days": [0, 1, 2, 3, 4], "calendar": "school"}
   ],
+  "programs": [
+    {"id": "morgen", "label": "Morgenlicht", "enabled": true, "start": "06:00", "end": "06:40",
+     "days": [0, 1, 2, 3, 4], "calendar": "school", "effect": "morgen_sonnenaufgang",
+     "brightness_start": 1, "brightness_end": 80, "ramp_minutes": 15},
+    {"id": "abend", "label": "Abendlicht", "enabled": true, "start": "20:30", "end": "21:00",
+     "days": [0, 1, 2, 3, 4, 5, 6], "calendar": "before_school", "effect": "abend_glut",
+     "brightness_start": 35, "brightness_end": 4, "ramp_minutes": 30}
+  ],
+  "calendar": {
+    "free_days": []
+  },
   "wake": {
-    "effect": "morgenlicht",
+    "effect": "",
     "light_lead_minutes": 0,
     "light_ramp_minutes": 2,
     "brightness_start": 3,

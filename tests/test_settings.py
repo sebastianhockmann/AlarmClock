@@ -17,7 +17,9 @@ class SettingsTests(TempSettingsTestCase):
         for key, action in settings.get('keys').items():
             if action['type'] == 'effect':
                 self.assertIn(action['effect'], ids, key)
-        self.assertIn(settings.get('wake')['effect'], ids)
+        self.assertIn(settings.get('wake')['effect'] or 'off', ids)
+        for program in settings.get('programs'):
+            self.assertIn(program['effect'], ids, program['label'])
 
     def test_overrides_merge_dicts_and_replace_lists(self):
         settings.save('wake', {**settings.get('wake'), 'volume_end': 40})

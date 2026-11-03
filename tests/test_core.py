@@ -48,6 +48,7 @@ class SchedulerTests(TempSettingsTestCase):
         settings.save('alarms', [{'label': 'Frueh', 'time': '00:05', 'days': [0]}])
         wake = settings.get('wake')
         wake['light_lead_minutes'] = 10
+        wake['effect'] = 'morgenlicht'
         settings.save('wake', wake)
         alarms = scheduler.AlarmScheduler()
         # Sonntag 23:55 -> Licht fuer Montag 00:05.
@@ -107,6 +108,12 @@ class SchedulerTests(TempSettingsTestCase):
 
 
 class ControllerTests(TempSettingsTestCase):
+    def setUp(self):
+        super().setUp()
+        # Hier geht es ums Weckprogramm allein: mit eigenem Licht, ohne Lichtprogramme.
+        settings.save('wake', {**settings.get('wake'), 'effect': 'morgenlicht', 'light_end': 'off'})
+        settings.save('programs', [])
+
     def make(self, **kwargs):
         self.player = player_mock()
         self.send = Mock()

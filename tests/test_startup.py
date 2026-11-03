@@ -24,6 +24,8 @@ class StartupTests(TempSettingsTestCase):
              patch('alarm_clock.WLEDManager') as wled, \
              patch('alarm_clock.ipc.CommandServer') as server, \
              patch('alarm_clock.ClockController') as controller, \
+             patch('alarm_clock.network.NetworkMonitor') as monitor, \
+             patch('alarm_clock.school_calendar.HolidayUpdater') as holidays, \
              patch('builtins.print') as report:
             controller.return_value.message.return_value = 'Guten Morgen'
             controller.return_value.force_backlight = False
@@ -34,6 +36,8 @@ class StartupTests(TempSettingsTestCase):
             player.return_value.stop.assert_called_once()
             wled.return_value.close.assert_called_once()
             server.return_value.close.assert_called_once()
+            monitor.return_value.close.assert_called_once()
+            holidays.return_value.close.assert_called_once()
             return report
 
     def test_missing_button_backend_does_not_stop_clock(self):

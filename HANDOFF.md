@@ -1,6 +1,6 @@
 # Handoff — AlarmClock
 
-_Status as of 2026-09-26, uncommitted restructuring on top of `571eca3` on `main`._
+_Status as of 2026-11-03._
 
 ## Where things stand
 
@@ -36,24 +36,37 @@ Restructured for maintainability:
 - Needs on the Pi: restart both services, pick "Echo über Home Assistant" under Smart Home,
   verify knob direction and push-turn on hardware.
 
+## 2026-11-03: Netzwerk-Live-Check, Schulkalender, Morgen-/Abendlicht
+
+- errno 113: `network.py` + `integrations._open()` warten bei nicht aufgebauter Verbindung
+  bis 20 s aufs Netz und senden erneut (nie nach Timeout). `NetworkMonitor` loggt Ausfaelle.
+  Ursache vermutlich WLAN-Power-Save (`Power Management:on`) -> `networkmanager/wifi-powersave-off.conf`
+  muss noch mit sudo installiert werden (README "Netzwerk-Live-Check").
+- `school_calendar.py`: Thueringer Feiertage berechnet, Ferien von openholidaysapi.org
+  (Seed `config/school_holidays.json` bis 01/2029 + taeglicher Cache), eigene freie Tage.
+- `programs.py`: Morgenlicht 06:00-06:40 (Schultage, Sonnenaufgang 1->80 % in 15 min),
+  Abendlicht 20:30-21:00 (vor Schultagen, Abendglut 35->4 % in 30 min). Wecker "Schule"
+  06:15 Mo-Fr nur Schultage; Weckprogramm-Licht jetzt "kein Licht". `alarms_enabled` auf true gesetzt.
+- Dienste laufen seit 2026-11-03 17:25 mit dem neuen Code.
+- Offen: WLAN-Power-Save-Konfig installieren, Morgen-/Abendlicht am echten Streifen ansehen.
+
 ## Tests
 
-`python -m unittest discover -s tests -v` → 82 tests, all green on the Pi.
+`.venv/bin/python -m unittest discover -s tests -v` → 111 tests, all green on the Pi
+(system Python lacks Flask, so use the venv).
 Integration-checked on the Pi: new web UI against the real WLED (16.0.1, 264 LEDs,
 AudioReactive with I2S mic active), Open-Meteo search, and the clock main loop with a
 stub LCD driven over `ipc`. Rendered pages checked via headless Firefox (desktop + phone width).
 
 ## Open items
 
-1. **Services still run the old code** — needs
-   `sudo systemctl restart alarmclock.service alarmclock-web.service` (sudo needs a password).
-   Then check `journalctl -u alarmclock.service` for the migration message and verify on
-   hardware: wake test from the web UI (light ramp, volume ramp, end after song), snooze via
-   keypad, key actions, LCD messages.
-2. Alexa: `alexa_remote_control.sh` not installed yet; key B is preconfigured for it.
-   Alternative without login: URL Routine Trigger / Voice Monkey URL as `http` action.
-3. Home Assistant URL/token not set; key A (Deckenlampe) does nothing until then.
-4. Weather location not set.
+1. **WLAN power save still on** — install `networkmanager/wifi-powersave-off.conf` to
+   `/etc/NetworkManager/conf.d/` (sudo) and restart NetworkManager.
+2. Verify on hardware: morning/evening light, alarm "Schule", snooze via keypad, wake test,
+   key A (HA Deckenlampe).
+3. Alexa: `alexa_remote_control.sh` not installed; key B needs it (or use
+   "Echo ueber Home Assistant").
+4. Home Assistant and weather location are configured (done).
 5. Alarm "already fired today" lock is in memory only (restart within the alarm minute can
    re-trigger; missed alarms are not caught up).
 6. Web UI has no authentication — LAN-only by design.

@@ -259,7 +259,8 @@ FIELD_NAMES = {
     'snooze_minutes': 'Schlummerzeit', 'date': 'Datum', 'file': 'Datei',
     'message': 'Spruch', 'start': 'Beginn', 'end': 'Ende', 'text': 'Text',
     'url': 'URL', 'service': 'Service', 'entity_id': 'Entity-ID', 'device': 'Geraet',
-    'device_id': 'Echo', 'colors': 'Farben',
+    'device_id': 'Echo', 'colors': 'Farben', 'calendar': 'Kalender',
+    'ramp_minutes': 'Helligkeits-Rampe', 'free_days': 'Freie Tage',
     'latitude': 'Breitengrad', 'longitude': 'Laengengrad', 'name': 'Name',
 }
 
@@ -293,12 +294,32 @@ WAKE_SPEC = {
     'show_weather': (boolean, False),
 }
 
+# Kalender-Regeln (school_calendar.matches): Thueringer Feiertage und Schulferien.
+CALENDAR_RULES = ('all', 'school', 'free', 'before_school')
+
 ALARM_SPEC = {
     'id': (ident, ''),
     'label': (text(30), 'Wecker'),
     'enabled': (boolean, True),
     'time': (hhmm, '06:15'),
     'days': (days, ALL_DAYS),
+    'calendar': (choice('all', 'school', 'free'), 'all'),
+}
+
+# Lichtprogramm: von start bis end leuchtet effect, die Helligkeit laeuft in
+# ramp_minutes von brightness_start nach brightness_end (auch abwaerts), um end aus.
+PROGRAM_SPEC = {
+    'id': (ident, ''),
+    'label': (text(30), 'Lichtprogramm'),
+    'enabled': (boolean, True),
+    'start': (hhmm, '20:30'),
+    'end': (hhmm, '21:00'),
+    'days': (days, ALL_DAYS),
+    'calendar': (choice(*CALENDAR_RULES), 'all'),
+    'effect': (ident, 'solid'),
+    'brightness_start': (int_range(1, 100), 30),
+    'brightness_end': (int_range(1, 100), 30),
+    'ramp_minutes': (int_range(0, 240), 0),
 }
 
 GREETING_SPEC = {
@@ -427,18 +448,55 @@ def _strict_fields(spec):
     return lambda entry, label: validate_fields(entry, spec, True, label=label)
 
 
-def validate_alarms(value, strict=True):
+def _validate_with_ids(value, spec, strict, name, prefix):
     def entry(item, label):
         if isinstance(item, dict) and not item.get('id'):
-            item = {**item, 'id': 'w' + uuid.uuid4().hex[:8]}
-        return validate_fields(item, ALARM_SPEC, True, label=label)
-    alarms = _validate_list(value, entry, strict, 'Wecker', 20)
+            item = {**item, 'id': prefix + uuid.uuid4().hex[:8]}
+        return validate_fields(item, spec, True, label=label)
+    entries = _validate_list(value, entry, strict, name, 20)
     seen = set()
-    for alarm in alarms:
-        if alarm['id'] in seen:
-            alarm['id'] = 'w' + uuid.uuid4().hex[:8]
-        seen.add(alarm['id'])
-    return alarms
+    for item in entries:
+        if item['id'] in seen:
+            item['id'] = prefix + uuid.uuid4().hex[:8]
+        seen.add(item['id'])
+    return entries
+
+
+def validate_alarms(value, strict=True):
+    return _validate_with_ids(value, ALARM_SPEC, strict, 'Wecker', 'w')
+
+
+def validate_programs(value, strict=True):
+    programs = _validate_with_ids(value, PROGRAM_SPEC, strict, 'Lichtprogramm', 'p')
+    for number, program in enumerate(programs, 1):
+        if strict and program['start'] == program['end']:
+            raise ValueError(f'Lichtprogramm {number}: Beginn und Ende sind gleich')
+    return programs
+
+
+def free_day(value):
+    if not isinstance(value, str):
+        raise ValueError('Datum als JJJJ-MM-TT angeben')
+    value = value.strip()
+    try:
+        datetime.strptime(value, '%Y-%m-%d')
+    except ValueError:
+        raise ValueError(f'"{value}": Datum als JJJJ-MM-TT angeben') from None
+    return value
+
+
+def validate_calendar(value, strict=True, defaults=None):
+    """{'free_days': ['JJJJ-MM-TT', ...]} - eigene schulfreie Tage (z. B. bewegliche Ferientage)."""
+    if not isinstance(value, dict):
+        if strict:
+            raise ValueError('Kalender muss ein Objekt sein')
+        value = {}
+    days_value = value.get('free_days', (defaults or {}).get('free_days', []))
+    if isinstance(days_value, str):
+        days_value = [part for part in re.split(r'[\s,;]+', days_value) if part]
+    entries = _validate_list(days_value, lambda item, label: free_day(item), strict,
+                             'Freie Tage', 200)
+    return {'free_days': sorted(set(entries))}
 
 
 def validate_greetings(value, strict=True):
@@ -509,6 +567,8 @@ def _dict_section(spec, name):
 VALIDATORS = {
     'alarms_enabled': lambda value, strict=True: boolean(value) if strict or isinstance(value, bool) else True,
     'alarms': validate_alarms,
+    'programs': validate_programs,
+    'calendar': validate_calendar,
     'wake': _dict_section(WAKE_SPEC, 'Weckprogramm'),
     'music': validate_music,
     'greetings': validate_greetings,
@@ -519,7 +579,7 @@ VALIDATORS = {
     'weather': _dict_section(WEATHER_SPEC, 'Wetter'),
     'effects': validate_effects,
 }
-DICT_SECTIONS = ('wake', 'music', 'wled', 'home_assistant', 'alexa', 'weather')
+DICT_SECTIONS = ('wake', 'music', 'wled', 'home_assistant', 'alexa', 'weather', 'calendar')
 
 
 # ---------------------------------------------------------------------------

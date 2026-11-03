@@ -27,6 +27,8 @@ beliebigen HTTP-Aufrufen.
 | `config/defaults.json` | Standardwerte für alles, was die Weboberfläche ändern kann | ja | von Hand |
 | `config/effects.json` | Standard-Effektbibliothek (WLED-Zustände mit numerischer `fx`-ID) | ja | von Hand |
 | `config/settings.json` | Änderungen aus der Weboberfläche | **nein** (gitignored) | Weboberfläche |
+| `config/school_holidays.json` | Schulferien Thüringen (Startbestand, gilt auch ohne Netz) | ja | `tools/update_school_holidays.py` |
+| `config/school_holidays_cache.json` | Schulferien, täglich frisch von openholidaysapi.org | **nein** (gitignored) | Wecker |
 | `config/__init__.py` | Lädt `hardware.json` und stellt die Werte als `config.LCD_ADDRESS` usw. bereit | ja | – |
 
 Regeln:
@@ -93,6 +95,11 @@ Module:
 - `controller.py` – `ClockController`: Lebenszyklus des Weckvorgangs und alle
   Eingabe-Ereignisse inkl. Tastenaktionen. Hardwareunabhängig, voll getestet.
 - `integrations.py` – HTTP-Aufrufe, Home Assistant, Alexa (im Hintergrund-Thread).
+- `network.py` – Netzwerk-Live-Check: Warten auf das Netz bei errno 113,
+  `NetworkMonitor` protokolliert Ausfälle.
+- `school_calendar.py` – Schultage in Thüringen (Wochenende, Feiertage,
+  Schulferien, eigene freie Tage), `HolidayUpdater` holt die Ferien täglich.
+- `programs.py` – Lichtprogramme (Morgen-/Abendlicht) nach Uhrzeit und Kalender.
 - `weather.py` – Wetter von Open-Meteo fürs LCD.
 - `ipc.py` – Steuerkanal Weboberfläche → Wecker.
 - `lighting.py` – `WLEDManager` (Hintergrund-Thread, Warteschlange behält nur
@@ -111,8 +118,11 @@ weiter.
 
 ## Wecker und Weckprogramm
 
-**Wecker:** beliebig viele, jeweils mit Uhrzeit, Name und Wochentagen
-(z. B. „Schule“ Mo–Fr 06:15, „Wochenende“ Sa+So 08:00). Der Schalter
+**Wecker:** beliebig viele, jeweils mit Uhrzeit, Name, Wochentagen und
+Kalender (z. B. „Schule“ Mo–Fr 06:15 *nur Schultage*, „Wochenende“ Sa+So
+08:00). *Nur Schultage* lässt Feiertage und Schulferien in Thüringen aus,
+*nur freie Tage* gilt genau dann (siehe [Schulkalender](#schulkalender-thüringen)).
+Standard: „Schule“ Mo–Fr 06:15, nur Schultage. Der Schalter
 „Wecker aktiv“ in der Übersicht pausiert alle (Urlaub). Jeder Wecker löst pro
 Datum einmal aus; die Sperre gilt bis zum Neustart – ein Neustart innerhalb
 der Weckminute kann erneut auslösen, verpasste Termine werden nicht nachgeholt.
@@ -152,6 +162,52 @@ startet das Programm sofort (ohne Vorlauf).
 Lautstärke 20 % → 60 % über 120 s, Spätestens aus nach 15 min, Licht danach
 „anlassen“. So ist es zur Weckzeit schon dämmrig hell und wird mit der Musik
 weiter heller.
+
+## Morgen- und Abendlicht (Lichtprogramme)
+
+Unabhängig vom Wecker schaltet der Wecker WLED nach Uhrzeit (Tab „Morgen &
+Abend“). Jedes Programm hat Beginn, „Licht aus um“, Effekt, Wochentage,
+Kalender und eine Helligkeitsrampe: in „Übergang über“ Minuten von
+„Helligkeit Beginn“ nach „Helligkeit danach“ – aufwärts zum Wachwerden,
+abwärts zum Einschlafen. Zum Ende blendet das Licht in 5 s aus.
+
+| Programm | Zeit | Kalender | Effekt | Helligkeit |
+|---|---|---|---|---|
+| Morgenlicht | 06:00–06:40 | Mo–Fr, nur Schultage | „Sonnenaufgang“ (Palette *Sunset*, langsam wandernd) | 1 % → 80 % in 15 min, zur Weckzeit 06:15 voll |
+| Abendlicht | 20:30–21:00 | jeden Abend vor einem Schultag (So–Do, nicht vor Ferien/Feiertagen) | „Abendglut“ (tiefes Bernstein, kaum Blauanteil) | 35 % → 4 % in 30 min |
+
+Alternative fürs Einschlafen: „Einschlaf-Atmen“ (ganz langsames Atmen in
+Bernstein). Weitere Programme, z. B. Wochenend-Abendlicht, legt „＋ Programm“
+an (Kalender „nur freie Tage“).
+
+- Die Helligkeit wird aus der Uhrzeit berechnet: Startet der Wecker mitten
+  im Zeitfenster neu, geht es mit der passenden Helligkeit weiter.
+- Dreht jemand selbst am Licht (linker Knopf, Effekt-/Lichttaste, „Alles
+  normal“), hält das Programm still; zum Ende geht das Licht trotzdem aus.
+- Hat das Weckprogramm einen eigenen Lichteffekt, hat dieser beim Wecken
+  Vorrang. Standard ist deshalb Weckprogramm-Licht „kein Licht“, das Licht
+  kommt vom Morgenlicht.
+- Zeitfenster über Mitternacht gehen (22:00–01:00), der Kalender gilt dann
+  für den Starttag.
+
+## Schulkalender Thüringen
+
+„Schultag“ heißt: Mo–Fr, kein gesetzlicher Feiertag in Thüringen, keine
+Schulferien, kein eigener freier Tag.
+
+- **Feiertage** werden berechnet (Neujahr, Karfreitag, Ostermontag, 1. Mai,
+  Himmelfahrt, Pfingstmontag, Weltkindertag 20.9., 3.10., Reformationstag
+  31.10., 1./2. Weihnachtstag). Fronleichnam gilt nur in Teilen des
+  Eichsfelds und fehlt – bei Bedarf als freien Tag eintragen.
+- **Schulferien** inkl. „Schulfreier Tag“ (Freitag nach Himmelfahrt) kommen
+  von [openholidaysapi.org](https://openholidaysapi.org). Der Wecker holt sie
+  täglich für dieses und nächstes Jahr in `config/school_holidays_cache.json`;
+  ohne Netz gilt der versionierte Startbestand `config/school_holidays.json`
+  (aktualisieren: `.venv/bin/python tools/update_school_holidays.py`).
+- **Eigene freie Tage** (bewegliche Ferientage der Schule, Brückentage) im Tab
+  „Morgen & Abend“ eintragen, als `JJJJ-MM-TT` mit Komma getrennt.
+- Fehlen für einen Tag Feriendaten, gilt er als Schultag: lieber einmal zu
+  viel geweckt als verschlafen. Der Tab zeigt, bis wann Daten vorliegen.
 
 **Liedauswahl „Tageslied“:** konkretes Datum (`2026-12-24`) → jährliches Datum
 (`12-24`) → tägliche Rotation → Standardlied. „Zufallssong“ wählt aus allen
@@ -401,6 +457,31 @@ JSON-API (für eigene Skripte): `GET /api/state`,
 `play_file`, `stop_audio`, `wake_test`, `wake_stop`, `key`, `volume`),
 `POST /api/action/test`, `GET /api/wled/test`, `GET /api/wled/effects`,
 `GET /api/weather/test`, `GET /api/weather/search?q=Ort`.
+
+## Netzwerk-Live-Check
+
+Verliert der Pi kurz das WLAN, scheiterten Alexa-/Home-Assistant-Befehle mit
+`[Errno 113] No route to host`. Jetzt:
+
+- Kommt eine Verbindung **gar nicht zustande** (errno 113, Netz weg, Name nicht
+  auflösbar, abgelehnt), prüft der Wecker alle 2 s per TCP-Verbindungsaufbau,
+  ob das Ziel wieder erreichbar ist (bis 20 s), und sendet dann erneut. Nach
+  einem Timeout wird nie wiederholt – sonst könnte `light.toggle` doppelt
+  schalten. Beim Wecken mit Alexa greift danach weiterhin der MP3-Rückfall.
+- Ein Hintergrund-Thread prüft alle 30 s Home Assistant und WLED (offline
+  alle 5 s) und schreibt Ausfälle mit Dauer ins Log
+  (`Netzwerk weg: …` / `Netzwerk wieder da (nach 12 s)`). Die Weboberfläche
+  zeigt „Netzwerk weg“ oben rechts. Die regelmäßigen Pakete halten das WLAN
+  zusätzlich wach.
+
+**Ursache abstellen:** Der WLAN-Stromsparmodus des Pi (`iwconfig wlan0` →
+`Power Management:on`) ist der häufigste Grund für die Aussetzer. Dauerhaft aus:
+
+```sh
+sudo cp networkmanager/wifi-powersave-off.conf /etc/NetworkManager/conf.d/
+sudo systemctl restart NetworkManager      # trennt das WLAN kurz
+iwconfig wlan0 | grep Power                # -> Power Management:off
+```
 
 ## Dauerhafter Betrieb (systemd + nginx)
 

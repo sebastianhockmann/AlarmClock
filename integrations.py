@@ -23,6 +23,7 @@ import time
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 import config
+import network
 import settings
 
 logger = logging.getLogger(__name__)
@@ -93,6 +94,34 @@ def run_sync(action):
     return False, f'Keine externe Aktion: {kind}'
 
 
+def _open(request, timeout, wait=None):
+    """urlopen mit Live-Check.
+
+    Kam die Verbindung nicht zustande (z. B. errno 113, WLAN kurz weg), bis zu
+    network.WAIT_SECONDS warten, bis das Ziel wieder erreichbar ist, dann
+    erneut senden. Nach Timeouts nie - sonst koennte light.toggle doppelt schalten.
+    """
+    wait = network.WAIT_SECONDS if wait is None else wait
+    deadline = time.monotonic() + wait
+    for attempt in range(1, 4):
+        try:
+            return urlopen(request, timeout=timeout)
+        except HTTPError:
+            raise
+        except (URLError, OSError) as error:
+            place = network.endpoint(request.full_url)
+            remaining = deadline - time.monotonic()
+            if attempt == 3 or place is None or remaining <= 0 or not network.not_connected(error):
+                raise
+            logger.warning('%s nicht erreichbar (%s), warte auf Netzwerk', place[0],
+                           getattr(error, 'reason', error))
+            if config.DEBUG:
+                print(f'[Netz] {place[0]} nicht erreichbar, warte bis {int(remaining)} s', flush=True)
+            if not network.wait_reachable(*place, timeout=remaining):
+                raise
+    raise AssertionError('unreachable')
+
+
 def http_call(target, method='GET', body='', headers=None, timeout=TIMEOUT_SECONDS):
     data = None
     headers = dict(headers or {})
@@ -102,7 +131,7 @@ def http_call(target, method='GET', body='', headers=None, timeout=TIMEOUT_SECON
                            else 'text/plain')
     request = Request(target, data=data, headers=headers, method=method)
     try:
-        with urlopen(request, timeout=timeout) as response:
+        with _open(request, timeout) as response:
             return True, f'HTTP {response.status}'
     except HTTPError as error:
         return False, f'HTTP-Fehler {error.code}'
@@ -142,8 +171,8 @@ def _ha_fetch(path, payload=None):
     base, headers = connection
     data = None if payload is None else json.dumps(payload).encode('utf-8')
     try:
-        with urlopen(Request(base + path, data=data, headers=headers),
-                     timeout=TIMEOUT_SECONDS) as response:
+        with _open(Request(base + path, data=data, headers=headers),
+                   TIMEOUT_SECONDS) as response:
             return json.load(response), ''
     except HTTPError as error:
         return None, f'HTTP-Fehler {error.code}'

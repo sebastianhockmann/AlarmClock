@@ -8,6 +8,8 @@ import time
 import config
 import chime
 import ipc
+import network
+import school_calendar
 import settings
 from audio import AudioPlayer
 from controller import ClockController
@@ -43,6 +45,15 @@ def open_inputs(emit):
     return inputs
 
 
+def network_targets():
+    """Was der Live-Check pruefen soll: Home Assistant und WLED."""
+    targets = [network.endpoint(settings.get('home_assistant')['url'])]
+    wled = settings.get('wled')
+    if wled['enabled']:
+        targets.append(network.endpoint('http://' + wled['host']))
+    return [target for target in targets if target]
+
+
 def main():
     from lcd import lcd_show, lcd_set_backlight, lcd_close
 
@@ -62,6 +73,9 @@ def main():
     inputs = []
     server = None
     running = True
+    log = lambda message: print(message, flush=True)
+    monitor = network.NetworkMonitor(network_targets, report=log)
+    holidays = school_calendar.HolidayUpdater(report=log)
 
     def shutdown(signum, frame):
         nonlocal running
@@ -80,7 +94,8 @@ def main():
                                      weather=WeatherService(settings))
         inputs = open_inputs(emit)
         try:
-            server = ipc.CommandServer(emit, controller.status)
+            server = ipc.CommandServer(emit, lambda: {**controller.status(),
+                                                      'network': monitor.online})
         except OSError as error:
             print(f'Steuerkanal fuer die Weboberflaeche nicht verfuegbar: {error}', flush=True)
         previous_text, scroll_start = None, time.monotonic()
@@ -118,6 +133,8 @@ def main():
             device.close()
         player.stop()
         wled.close()
+        monitor.close()
+        holidays.close()
         lcd_close()
 
 

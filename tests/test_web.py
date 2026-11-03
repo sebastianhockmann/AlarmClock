@@ -29,6 +29,16 @@ class WebTests(TempSettingsTestCase):
         self.assertEqual(state['keypad'][3], ['*', '0', '#', 'D'])
         self.assertIn('days_text', state['alarms_view'][0])
 
+    def test_calendar_and_programs_in_state(self):
+        state = self.client.get('/api/state').json
+        self.assertIn(state['calendar_view']['today']['school'], (True, False))
+        self.assertTrue(state['calendar_view']['known_until'])
+        self.assertEqual([p['label'] for p in state['settings']['programs']], ['Morgenlicht', 'Abendlicht'])
+        self.assertTrue(state['programs_view'])
+        result = self.put('programs', [{'label': 'X', 'start': '20:00', 'end': '20:00', 'effect': 'solid'}])
+        self.assertEqual(result.status_code, 400)
+        self.assertIn('gleich', result.json['error'])
+
     def test_save_and_validation(self):
         result = self.put('alarms', [{'label': 'Schule', 'time': '06:40', 'days': [0, 1, 2, 3, 4]}])
         self.assertEqual(result.status_code, 200)

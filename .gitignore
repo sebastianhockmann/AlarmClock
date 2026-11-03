@@ -42,4 +42,5 @@ config_local.py
 settings.json
 mp3_mapping.json
 config/settings.json
+config/school_holidays_cache.json
 *.migrated

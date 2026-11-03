@@ -7,7 +7,7 @@ Wecker-Prozess - die Weboberflaeche selbst spielt nichts ab.
 
 Keine Anmeldung: nur fuers Heimnetz gedacht (siehe README).
 """
-from datetime import datetime
+from datetime import datetime, timedelta
 import json
 from pathlib import Path
 from urllib.error import URLError
@@ -18,6 +18,8 @@ from werkzeug.utils import secure_filename
 import config
 import integrations
 import ipc
+import programs
+import school_calendar
 import settings
 from lighting import WLEDManager
 from scheduler import describe_days, get_today_wake_item, list_music, next_alarm
@@ -65,7 +67,8 @@ def state():
     today = get_today_wake_item(now.date())
     alarms = settings.get('alarms')
     for alarm in alarms:
-        alarm['days_text'] = describe_days(alarm['days'])
+        alarm['days_text'] = describe_days(alarm['days'], alarm['calendar'])
+    known = school_calendar.known_until()
     overridden = sorted(settings.overrides())
     return jsonify(
         settings=public_settings(),
@@ -80,6 +83,16 @@ def state():
             'in_minutes': int((upcoming[0] - now).total_seconds() // 60),
         },
         clock=ipc.status(),
+        calendar_view={
+            'today': school_calendar.describe(now.date()),
+            'tomorrow': school_calendar.describe(now.date() + timedelta(days=1)),
+            'upcoming': school_calendar.upcoming_holidays(now.date(), 6),
+            'known_until': known.isoformat() if known else None,
+        },
+        programs_view=[{'id': program['id'], 'label': program['label'],
+                        'start': start.isoformat(timespec='minutes'),
+                        'end': end.isoformat(timespec='minutes')}
+                       for start, end, program in programs.upcoming(now)],
         alexa_script=bool(config.ALEXA_SCRIPT and Path(config.ALEXA_SCRIPT).is_file()),
     )
 

@@ -74,6 +74,13 @@ button:disabled { opacity: .5; cursor: default; }
 @media (max-width: 620px) {
   .alarm { grid-template-columns: auto 1fr auto; grid-template-areas: "sw time del" "label label label" "days days days"; }
 }
+.alarm .cal { width: auto; padding: 5px 8px; font-size: 13px; }
+.program { padding: 14px 0; border-top: 1px solid var(--line); }
+.program:first-of-type { border-top: 0; }
+.program .head { display: flex; gap: 10px; align-items: center; margin-bottom: 10px; }
+.program .head input.label { flex: 1; font-weight: 600; }
+.program input[type=time] { font-size: 18px; font-weight: 600; padding: 4px 6px; }
+.free-list div { padding: 3px 0; font-variant-numeric: tabular-nums; }
 .tag:empty { display: none; }
 .keypad { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; max-width: 520px; }
 .key { aspect-ratio: 1.25; border-radius: 12px; border: 1px solid var(--line); background: var(--bg);
@@ -165,7 +172,7 @@ code { background: var(--chip); padding: 1px 5px; border-radius: 5px; font-size:
 <section class="tab" data-tab="wake" data-title="Weckprogramm">
   <div class="card">
     <h2>Licht</h2>
-    <p class="hint">Das Licht startet gedimmt und wird langsam heller – wie ein Sonnenaufgang.</p>
+    <p class="hint">Das Licht startet gedimmt und wird langsam heller – wie ein Sonnenaufgang. Läuft das Morgenlicht schon über „Morgen &amp; Abend“, hier „kein Licht“ wählen (sonst hat dieses Licht beim Wecken Vorrang).</p>
     <div class="grid" id="wake-light"></div>
   </div>
   <div class="card">
@@ -186,6 +193,36 @@ code { background: var(--chip); padding: 1px 5px; border-radius: 5px; font-size:
       <span class="spacer"></span>
       <button class="primary" onclick="saveWake()">Speichern</button>
     </div>
+  </div>
+</section>
+
+<!-- LICHTPROGRAMME -->
+<section class="tab" data-tab="programs" data-title="Morgen &amp; Abend">
+  <div class="card">
+    <h2>Lichtprogramme</h2>
+    <p class="hint">Licht nach Uhrzeit, unabhängig vom Wecker: morgens langsam heller werden, abends weich dunkler zum Einschlafen. Zum Ende geht das Licht aus.
+      Wer selbst am Licht dreht (linker Knopf, Effekt-Taste), übernimmt – ausgeschaltet wird zum Ende trotzdem.</p>
+    <div id="program-list"></div>
+    <div class="row end">
+      <button onclick="addProgram()">＋ Programm</button>
+      <span class="spacer"></span>
+      <button onclick="resetSection('programs')">Standard</button>
+      <button class="primary" onclick="savePrograms()">Speichern</button>
+    </div>
+  </div>
+  <div class="card">
+    <h2>Schulkalender Thüringen</h2>
+    <p class="hint">Wochenenden, Feiertage und Schulferien (openholidaysapi.org, wird täglich aktualisiert) gelten für Wecker und Lichtprogramme mit „nur Schultage“ / „vor Schultagen“.</p>
+    <div class="grid">
+      <div><div class="muted">Heute</div><b id="cal-today">–</b></div>
+      <div><div class="muted">Morgen</div><b id="cal-tomorrow">–</b></div>
+      <div><div class="muted">Ferientermine bekannt bis</div><b id="cal-known">–</b></div>
+    </div>
+    <h3 style="font-size:14px;margin:14px 0 4px">Nächste freie Tage</h3>
+    <div class="free-list" id="cal-upcoming"></div>
+    <label class="field" style="margin-top:12px">Zusätzliche freie Tage (z. B. bewegliche Ferientage der Schule), JJJJ-MM-TT mit Komma getrennt
+      <input id="cal-free-days" placeholder="2026-12-21, 2027-05-07"></label>
+    <div class="row end"><button class="primary" onclick="saveCalendar()">Speichern</button></div>
   </div>
 </section>
 
@@ -435,12 +472,14 @@ function showTab(name) {
 // ---------- Übersicht ----------
 function renderOverview() {
   const c = S.clock;
-  $('clock-status').innerHTML = c ? '<b>●</b> Wecker läuft' : '<b class="off">●</b> Wecker-Prozess nicht erreichbar';
+  $('clock-status').innerHTML = !c ? '<b class="off">●</b> Wecker-Prozess nicht erreichbar'
+    : c.network === false ? '<b class="off">●</b> Wecker läuft, Netzwerk weg' : '<b>●</b> Wecker läuft';
   const n = S.next_alarm;
   if (n && S.settings.alarms_enabled) {
     const at = new Date(n.at);
     const day = at.toDateString() === new Date().toDateString() ? 'heute'
-      : at.toDateString() === new Date(Date.now() + 864e5).toDateString() ? 'morgen' : DAYS[(at.getDay() + 6) % 7];
+      : at.toDateString() === new Date(Date.now() + 864e5).toDateString() ? 'morgen'
+      : DAYS[(at.getDay() + 6) % 7] + ' ' + at.toLocaleDateString('de-DE', {day: '2-digit', month: '2-digit'});
     $('next-alarm').textContent = at.toTimeString().slice(0, 5);
     const h = Math.floor(n.in_minutes / 60), m = n.in_minutes % 60;
     $('next-alarm-info').textContent = `${day} · ${n.label} · in ${h ? h + ' h ' : ''}${m} min`;
@@ -453,6 +492,8 @@ function renderOverview() {
   if (c) {
     const phase = {light: '🌅 Licht-Vorlauf', music: '⏰ Wecker klingelt', snooze: '😴 Schlummern'}[c.phase];
     now = phase ? `${phase}${c.alarm ? ' (' + c.alarm + ')' : ''}` : (c.playing ? '▶ Musik läuft' : 'Ruhe');
+    if (c.program) now += ' · 💡 ' + c.program;
+    if (c.network === false) now += ' · ⚠ Netzwerk weg (Alexa/Home Assistant/WLED)';
     if (c.song) now += ' · ' + shortName(c.song);
     if (c.notice) now += ' · „' + c.notice + '“';
     if (document.activeElement !== $('volume')) $('volume').value = c.volume;
@@ -467,6 +508,7 @@ $('volume').oninput = e => $('volume-value').textContent = e.target.value + ' %'
 
 // ---------- Wecker ----------
 let alarms = [];
+const ALARM_CALENDAR = [['all', 'an diesen Tagen immer'], ['school', 'nur Schultage (ohne Ferien/Feiertage)'], ['free', 'nur freie Tage']];
 function renderAlarms() {
   $('alarm-list').innerHTML = alarms.map((a, i) => `
     <div class="alarm">
@@ -478,6 +520,7 @@ function renderAlarms() {
         `<button class="${a.days.includes(n) ? 'on' : ''}" onclick="toggleDay(${i},${n})">${d}</button>`).join('')}
         <button class="small" style="width:auto;padding:6px 10px" onclick="setDays(${i},[0,1,2,3,4])">Mo–Fr</button>
         <button class="small" style="width:auto;padding:6px 10px" onclick="setDays(${i},[0,1,2,3,4,5,6])">täglich</button>
+        <select class="cal" title="Kalender" onchange="alarms[${i}].calendar=this.value">${options(ALARM_CALENDAR, a.calendar)}</select>
       </div>
     </div>`).join('') || '<p class="muted">Noch kein Wecker.</p>';
 }
@@ -486,7 +529,7 @@ function toggleDay(i, d) {
   k < 0 ? days.push(d) : days.splice(k, 1); days.sort(); renderAlarms();
 }
 function setDays(i, days) { alarms[i].days = days.slice(); renderAlarms(); }
-function addAlarm() { alarms.push({label: 'Wecker', enabled: true, time: '07:00', days: [0, 1, 2, 3, 4]}); renderAlarms(); }
+function addAlarm() { alarms.push({label: 'Wecker', enabled: true, time: '07:00', days: [0, 1, 2, 3, 4], calendar: 'all'}); renderAlarms(); }
 async function saveAlarms() {
   if (alarms.some(a => a.enabled && !a.days.length)) { toast('Ein aktiver Wecker hat keinen Wochentag', true); return; }
   const r = await saveSection('alarms', alarms);
@@ -559,6 +602,81 @@ function renderTimeline() {
   $('wake-timeline').innerHTML = lines.map(l => `<div>${l}</div>`).join('');
 }
 async function saveWake() { const r = await saveSection('wake', wake); if (r.success) wake = clone(S.settings.wake); }
+
+// ---------- Lichtprogramme ----------
+let programs = [];
+const PROGRAM_CALENDAR = [['all', 'an diesen Tagen immer'], ['school', 'nur Schultage'], ['before_school', 'nur vor Schultagen (Abend)'], ['free', 'nur freie Tage']];
+function programRange(i, key, title, min, max, step, unit) {
+  const v = programs[i][key];
+  return `<label class="field">${title} <span class="v" id="pv-${i}-${key}">${v} ${unit}</span>
+    <input type="range" min="${min}" max="${max}" step="${step}" value="${v}"
+      oninput="programs[${i}].${key}=Number(this.value);$('pv-${i}-${key}').textContent=this.value+' ${unit}';$('ps-${i}').textContent=programSummary(programs[${i}])"></label>`;
+}
+function programSummary(p) {
+  const eff = (S.settings.effects.find(e => e.id === p.effect) || {}).name || p.effect;
+  const ramp = p.ramp_minutes ? `in ${p.ramp_minutes} min von ${p.brightness_start} % auf ${p.brightness_end} %` : `mit ${p.brightness_end} %`;
+  return `${p.start} „${eff}“ ${ramp} · ${p.end} Licht aus`;
+}
+function renderPrograms() {
+  const next = Object.fromEntries((S.programs_view || []).map(v => [v.id, v]));
+  $('program-list').innerHTML = programs.map((p, i) => {
+    const n = next[p.id];
+    const when = n ? new Date(n.start) : null;
+    const nextText = !p.enabled ? 'aus' : when ? `nächster Start: ${DAYS[(when.getDay() + 6) % 7]} ${when.toLocaleDateString('de-DE')} ${n.start.slice(11)}` : 'in den nächsten 14 Tagen nicht';
+    return `<div class="program">
+      <div class="head">
+        <label class="switch"><input type="checkbox" ${p.enabled ? 'checked' : ''} onchange="programs[${i}].enabled=this.checked"></label>
+        <input class="label" value="${esc(p.label)}" maxlength="30" onchange="programs[${i}].label=this.value">
+        <button class="small" onclick="previewProgram(${i})" title="Effekt am WLED zeigen">Zeigen</button>
+        <button class="small danger" title="Löschen" onclick="programs.splice(${i},1);renderPrograms()">✕</button>
+      </div>
+      <div class="grid">
+        <label class="field">Beginn<input type="time" value="${esc(p.start)}" onchange="programs[${i}].start=this.value;renderPrograms()"></label>
+        <label class="field">Licht aus um<input type="time" value="${esc(p.end)}" onchange="programs[${i}].end=this.value;renderPrograms()"></label>
+        <label class="field">Lichteffekt<select onchange="programs[${i}].effect=this.value;renderPrograms()">${options(S.settings.effects.map(e => [e.id, e.name]), p.effect)}</select></label>
+        <label class="field">Kalender<select onchange="programs[${i}].calendar=this.value">${options(PROGRAM_CALENDAR, p.calendar)}</select></label>
+        ${programRange(i, 'brightness_start', 'Helligkeit Beginn', 1, 100, 1, '%')}
+        ${programRange(i, 'brightness_end', 'Helligkeit danach', 1, 100, 1, '%')}
+        ${programRange(i, 'ramp_minutes', 'Übergang über', 0, 120, 1, 'min')}
+      </div>
+      <div class="days" style="margin-top:10px">${DAYS.map((d, n) =>
+        `<button class="${p.days.includes(n) ? 'on' : ''}" onclick="toggleProgramDay(${i},${n})">${d}</button>`).join('')}</div>
+      <p class="hint" style="margin:8px 0 0"><span id="ps-${i}">${esc(programSummary(p))}</span> · ${esc(nextText)}</p>
+    </div>`;
+  }).join('') || '<p class="muted">Kein Lichtprogramm.</p>';
+}
+function toggleProgramDay(i, d) {
+  const days = programs[i].days; const k = days.indexOf(d);
+  k < 0 ? days.push(d) : days.splice(k, 1); days.sort(); renderPrograms();
+}
+function addProgram() {
+  programs.push({label: 'Lichtprogramm', enabled: true, start: '19:00', end: '19:30', days: [0, 1, 2, 3, 4, 5, 6],
+    calendar: 'all', effect: 'abend_glut', brightness_start: 30, brightness_end: 10, ramp_minutes: 20});
+  renderPrograms();
+}
+async function previewProgram(i) {
+  const e = S.settings.effects.find(x => x.id === programs[i].effect); if (!e) return;
+  const state = {...clone(e.state), on: true, bri: Math.max(1, Math.round(programs[i].brightness_start * 2.55))};
+  const r = await api('POST', '/api/wled/preview', state); if (r.success) toast('Am WLED gezeigt');
+}
+async function savePrograms() {
+  const r = await saveSection('programs', programs);
+  if (r.success) { programs = clone(S.settings.programs); renderPrograms(); }
+}
+const fmtDate = d => new Date(d + 'T12:00').toLocaleDateString('de-DE', {weekday: 'short', day: '2-digit', month: '2-digit', year: 'numeric'});
+function renderCalendar() {
+  const c = S.calendar_view;
+  const day = d => d.school ? 'Schultag' : 'frei – ' + d.reason;
+  $('cal-today').textContent = day(c.today);
+  $('cal-tomorrow').textContent = day(c.tomorrow);
+  $('cal-known').textContent = c.known_until ? fmtDate(c.known_until) : 'keine Daten';
+  $('cal-upcoming').innerHTML = c.upcoming.map(e => `<div>${esc(fmtDate(e.start))}${e.end !== e.start ? ' – ' + esc(fmtDate(e.end)) : ''} · ${esc(e.name)}</div>`).join('') || '<span class="muted">–</span>';
+}
+function renderCalendarForm() { $('cal-free-days').value = S.settings.calendar.free_days.join(', '); }
+async function saveCalendar() {
+  const r = await saveSection('calendar', {free_days: val('cal-free-days')});
+  if (r.success) { renderCalendarForm(); renderPrograms(); }
+}
 
 // ---------- Tasten ----------
 let keys = {};
@@ -852,11 +970,13 @@ async function refresh(all) {
   const first = !S;
   S = r;
   renderOverview();
+  renderCalendar();
   if (first || all) {
     alarms = clone(S.settings.alarms); wake = clone(S.settings.wake); keys = clone(S.settings.keys);
     music = clone(S.settings.music); effects = clone(S.settings.effects); greetings = clone(S.settings.greetings);
+    programs = clone(S.settings.programs);
     renderAlarms(); renderWake(); renderKeypad(); renderKeyEditor(); renderMusic(); renderEffects();
-    renderWled(); renderSmart(); renderGreetings();
+    renderWled(); renderSmart(); renderGreetings(); renderPrograms(); renderCalendarForm();
   } else {
     // Nur die Dateiliste nachziehen; Formulare nicht anfassen (Fokus/ungespeicherte Eingaben).
     if (JSON.stringify(S.music_files) !== shownFiles) renderFiles();
