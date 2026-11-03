@@ -48,7 +48,7 @@ Restructured for maintainability:
   Abendlicht 20:30-21:00 (vor Schultagen, Abendglut 35->4 % in 30 min). Wecker "Schule"
   06:15 Mo-Fr nur Schultage; Weckprogramm-Licht jetzt "kein Licht". `alarms_enabled` auf true gesetzt.
 - Dienste laufen seit 2026-11-03 17:25 mit dem neuen Code.
-- Offen: WLAN-Power-Save-Konfig installieren, Morgen-/Abendlicht am echten Streifen ansehen.
+- WLAN-Power-Save aus (Konfig installiert). Offen: Morgen-/Abendlicht am echten Streifen ansehen.
 
 ## Tests
 
@@ -60,8 +60,8 @@ stub LCD driven over `ipc`. Rendered pages checked via headless Firefox (desktop
 
 ## Open items
 
-1. **WLAN power save still on** — install `networkmanager/wifi-powersave-off.conf` to
-   `/etc/NetworkManager/conf.d/` (sudo) and restart NetworkManager.
+1. WLAN power save is off (`networkmanager/wifi-powersave-off.conf` installed 2026-11-03).
+   Watch `journalctl -u alarmclock.service` for further network outages.
 2. Verify on hardware: morning/evening light, alarm "Schule", snooze via keypad, wake test,
    key A (HA Deckenlampe).
 3. Alexa: `alexa_remote_control.sh` not installed; key B needs it (or use
