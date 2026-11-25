@@ -43,4 +43,5 @@ settings.json
 mp3_mapping.json
 config/settings.json
 config/school_holidays_cache.json
+config/alarm_state.json
 *.migrated

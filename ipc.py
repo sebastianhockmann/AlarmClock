@@ -15,7 +15,7 @@ import config
 
 # Ereignisse, die von aussen kommen duerfen (Eingabegeraete nutzen emit direkt).
 REMOTE_EVENTS = ('key', 'action', 'play_today', 'play_random', 'play_file', 'stop_audio',
-                 'wake_test', 'wake_stop', 'volume', 'notice')
+                 'wake_test', 'wake_stop', 'volume', 'brightness', 'notice')
 MAX_DATAGRAM = 8192
 
 

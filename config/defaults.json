@@ -36,6 +36,29 @@
   "music": {
     "default_song": "mp3/xmas/default.mp3",
     "default_message": "Guten Morgen!",
+    "christmas_playlist": {
+      "enabled": true,
+      "start_date": "11-25",
+      "end_date": "12-26",
+      "stop_after_minutes": 4,
+      "service": "Amazon Music",
+      "daily": true,
+      "time": "06:15",
+      "songs": [
+        {"text": "spiele Last Christmas von Wham!", "message": "", "length": ""},
+        {"text": "spiele In der Weihnachtsbäckerei von Rolf Zuckowski", "message": "", "length": ""},
+        {"text": "spiele All I Want for Christmas Is You von Mariah Carey", "message": "", "length": ""},
+        {"text": "spiele Leise rieselt der Schnee", "message": "", "length": ""},
+        {"text": "spiele Driving Home for Christmas von Chris Rea", "message": "", "length": ""},
+        {"text": "spiele Kling, Glöckchen, klingelingeling", "message": "", "length": ""},
+        {"text": "spiele Jingle Bell Rock von Bobby Helms", "message": "", "length": ""},
+        {"text": "spiele Morgen, Kinder, wird's was geben", "message": "", "length": ""},
+        {"text": "spiele Feliz Navidad von José Feliciano", "message": "", "length": ""},
+        {"text": "spiele O Tannenbaum", "message": "", "length": ""},
+        {"text": "spiele Rockin' Around the Christmas Tree von Brenda Lee", "message": "", "length": ""},
+        {"text": "spiele Schneeflöckchen, Weißröckchen", "message": "", "length": ""}
+      ]
+    },
     "dates": [
       {"date": "12-11", "file": "mp3/xmas/maria.mp3", "message": "Happy Xmas"},
       {"date": "12-12", "file": "mp3/xmas/frosty_snowman.mp3", "message": "2"},

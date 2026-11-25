@@ -13,7 +13,7 @@ beliebigen HTTP-Aufrufen.
 | Weckzeiten (mehrere, je Wochentag) | Weboberfläche → **Wecker** |
 | Weckprogramm (Licht-Sonnenaufgang, leise startende Musik, Ende nach dem Lied, Schlummern) | Weboberfläche → **Weckprogramm** |
 | Tastenbelegung | Weboberfläche → **Tasten** |
-| MP3s, Lieder für bestimmte Tage, Rotation | Weboberfläche → **Musik** |
+| MP3s, Lieder für bestimmte Tage, Rotation und Weihnachts-Playlist für Alexa | Weboberfläche → **Musik** |
 | WLED-Host, Effektbibliothek | Weboberfläche → **Licht** |
 | Alexa, Home Assistant, Wetter-Ort | Weboberfläche → **Smart Home** |
 | Begrüßungstexte und Display-Licht je Uhrzeit | Weboberfläche → **Anzeige** |
@@ -103,7 +103,8 @@ Module:
 - `weather.py` – Wetter von Open-Meteo fürs LCD.
 - `ipc.py` – Steuerkanal Weboberfläche → Wecker.
 - `lighting.py` – `WLEDManager` (Hintergrund-Thread, Warteschlange behält nur
-  den neuesten Befehl), `EffectBrowser` (alle Geräteeffekte am linken Knopf).
+  den neuesten Befehl; kommt er nicht an, wird er bis 15 min lang alle 5 s
+  erneut gesendet), `EffectBrowser` (alle Geräteeffekte am linken Knopf).
 - `audio.py` – `mpg123 -R`; Lautstärke live, erkennt Liedende.
 - `controls_mcp.py` – Drehencoder (MCP23017) und Tastenfeld (PCF8574).
 - `lcd.py`, `chime.py` (Klickton), `button.py` (alter GPIO-Taster, aus).
@@ -124,8 +125,10 @@ Kalender (z. B. „Schule“ Mo–Fr 06:15 *nur Schultage*, „Wochenende“ Sa+
 *nur freie Tage* gilt genau dann (siehe [Schulkalender](#schulkalender-thüringen)).
 Standard: „Schule“ Mo–Fr 06:15, nur Schultage. Der Schalter
 „Wecker aktiv“ in der Übersicht pausiert alle (Urlaub). Jeder Wecker löst pro
-Datum einmal aus; die Sperre gilt bis zum Neustart – ein Neustart innerhalb
-der Weckminute kann erneut auslösen, verpasste Termine werden nicht nachgeholt.
+Datum einmal aus; die Sperre steht in `config/alarm_state.json` und gilt auch
+nach einem Neustart. Verpasste Weckzeiten (Neustart des Pi oder der Dienste kurz
+vor/nach der Weckzeit, hängende Hauptschleife) werden bis 10 min später
+nachgeholt – lieber spät als gar nicht.
 
 **Weckprogramm** (gilt für alle Wecker):
 
@@ -156,6 +159,36 @@ der Weckminute kann erneut auslösen, verpasste Termine werden nicht nachgeholt.
 
 Der Ablauf wird in der Oberfläche als Zeitleiste angezeigt; „Jetzt testen“
 startet das Programm sofort (ohne Vorlauf).
+
+**Weihnachts-Playlist:** Im Tab „Musik“ steht eine Alexa-Playlist mit
+Weihnachtsliedern (Standard: deutsch/englisch gemischt, von „Last Christmas“
+bis „In der Weihnachtsbäckerei“). Im eingestellten Zeitraum (Standard
+25.11. bis einschließlich 26.12., darf auch über Neujahr gehen, z. B.
+`11-25` bis `01-06`) ersetzt sie die Musik **jedes Weckers**, egal ob das
+Weckprogramm auf Tageslied, Zufall oder Alexa steht; nur bei Musik „keine“
+bleibt es still. Wann geweckt wird, bestimmt weiter der Wecker (z. B. 06:15,
+Mo–Fr, nur Schultage). Mit **„täglich, auch ohne Wecker“** (Standard: an,
+06:15) weckt die Playlist zusätzlich an allen anderen Tagen im Zeitraum –
+Wochenende, Weihnachtsferien, Heiligabend und Feiertage –, aber nie zweimal
+am Tag: Klingelt an einem Tag ein normaler Wecker, bringt der das
+Weihnachtslied mit. Dieser Weihnachtswecker heißt „Weihnachtslieder“, hat
+Licht-Vorlauf und Schlummern wie jeder Wecker und erscheint in der Übersicht
+als nächster Wecker.
+Die Lieder kommen von **Amazon Music**: An jeden Befehl hängt der Wecker
+„auf Amazon Music“ an (Feld „Musikdienst“, leer = Standarddienst der
+Alexa-App; steht der Dienst schon im Befehl, wird nichts angehängt). Für genau
+den gewünschten Titel braucht Alexa Amazon Music Unlimited, sonst spielt sie
+evtl. nur ähnliche Musik. Pro Morgen kommt reihum das nächste Lied (am ersten Tag des Zeitraums Lied 1,
+gezählt wird nach Kalendertagen). Die Lautstärke steigt mit der Rampe aus dem
+Weckprogramm von leise zu laut. Alexa meldet dem Wecker nicht, wann ein Lied
+endet: Ist bei einem Lied die **Länge** (`m:ss`) eingetragen, sagt der Wecker
+genau danach (plus 3 s Startverzögerung) „Stopp“, sonst nach der Höchstdauer
+der Playlist (Standard 4 min). Schlummern, Licht-Vorlauf und „Wecker aus“
+funktionieren wie gewohnt. Ohne Echo unter „Smart Home“ oder wenn Alexa nicht
+erreichbar ist, läuft das MP3-Tageslied – ist das Netz schon als weg erkannt
+(LCD „Netz?“), sofort statt nach bis zu 20 s Wartezeit. Unter der Playlist zeigt die
+Oberfläche, welches Lied der nächste Wecker spielt; die Übersicht zeigt es
+unter „Nächster Wecker“ mit 🎄.
 
 **Sonnenaufgang-Wecken** (Vorschlag): Effekt „Morgenlicht“, Licht-Vorlauf
 15 min, Heller werden über 20 min, Helligkeit 1 % → 80 %, Musik „Alexa“,
@@ -450,11 +483,23 @@ Anfrage (`web.max_upload_mb`, passend zu `client_max_body_size` in nginx),
 keine Überschreibung. ▶ spielt am Wecker, 🎧 im Browser. Dateien, die als
 Standardlied, Datum oder Rotation verwendet werden, lassen sich nicht löschen.
 
-JSON-API (für eigene Skripte): `GET /api/state`,
+Bedienung:
+
+- **Übersicht**: nächster Wecker mit Plan (Licht, Musik, Ersatz-MP3 ohne Netz),
+  Schalter je Wecker (speichern sofort), **Wecker-Check** (Wecker-Programm,
+  Lautsprecher, MP3, WLED, Home Assistant, Echo, WLAN-Wächter – alle 60 s
+  live geprüft), Musik/Lautstärke und Licht an/aus/Helligkeit.
+- Ungespeicherte Änderungen: Punkt am Tab und am Speichern-Knopf; beim
+  Verlassen der Seite fragt der Browser nach.
+- Ist der Pi nicht erreichbar, zeigt ein roter Balken, von wann die Anzeige stammt.
+- Am Handy (Touch) sind Knöpfe und Schalter größer.
+
+JSON-API (für eigene Skripte): `GET /api/state`, `GET /api/health`,
 `PUT|DELETE /api/settings/<bereich>` (`alarms`, `alarms_enabled`, `wake`,
 `music`, `keys`, `effects`, `wled`, `greetings`, `home_assistant`, `alexa`,
 `weather`), `POST /api/control` (`{"event": "play_random"}`, `play_today`,
-`play_file`, `stop_audio`, `wake_test`, `wake_stop`, `key`, `volume`),
+`play_file`, `stop_audio`, `wake_test`, `wake_stop`, `key`, `volume`,
+`brightness` 1–100),
 `POST /api/action/test`, `GET /api/wled/test`, `GET /api/wled/effects`,
 `GET /api/weather/test`, `GET /api/weather/search?q=Ort`.
 
@@ -483,13 +528,41 @@ sudo systemctl restart NetworkManager      # trennt das WLAN kurz
 iwconfig wlan0 | grep Power                # -> Power Management:off
 ```
 
+(Erledigt auch `tools/install_system.sh`, siehe unten.)
+
+### Ausfall 24./25.11.2026 und was seitdem hilft
+
+Abends war der Pi nicht mehr erreichbar, das Display lief weiter (Wecker-Programm
+lief also), WLED und Alexa gingen nicht; morgens kamen weder Licht noch Musik.
+Die Ursache ließ sich nicht mehr klären, weil Raspberry Pi OS das Journal nur im
+RAM hält (`Storage=volatile`) – mit dem Neustart waren alle Logs weg. Bekannt:
+schwaches WLAN (−73 dBm) auf einem 5-GHz-DFS-Kanal (5,5 GHz = Kanal 100; bei
+Radar muss der Router den Kanal wechseln), und NetworkManager gibt nach 4
+gescheiterten Versuchen das Neuverbinden auf.
+
+Gegenmaßnahmen:
+
+- `tools/install_system.sh` (einmal mit `sudo`): Journal dauerhaft,
+  WLAN-Wächter, Hardware-Watchdog, Neuverbinden ohne Limit, Dienste mit
+  `Restart=always`.
+- **WLAN-Wächter** (`tools/netwatch.sh`, Timer jede Minute, als root): Gateway
+  nicht per ping erreichbar → nach 2 min WLAN neu verbinden, nach 5 min
+  NetworkManager neu starten, nach 10 min WLAN-Treiber neu laden, nach 20 min
+  Neustart (höchstens alle 6 h, nie während der Wecker klingelt). Log:
+  `journalctl -u alarmclock-netwatch.service`.
+- Wecker: ohne Netz sofort MP3 statt Alexa; WLED-Befehle werden nachgeholt,
+  sobald der Streifen wieder erreichbar ist (Morgenlicht geht dann noch an,
+  Abendlicht sicher aus); LCD zeigt rechts oben „Netz?“.
+- Audio über den Kartennamen (`plughw:CARD=Device,DEV=0`) statt Nummer – die
+  Nummer kann sich nach einem Neustart ändern.
+- Empfehlung Router: für dieses WLAN einen Nicht-DFS-Kanal (36–48) nehmen
+  oder den Pi ins 2,4-GHz-Netz bringen (größere Reichweite).
+
 ## Dauerhafter Betrieb (systemd + nginx)
 
 ```sh
 .venv/bin/pip install -r requirements.txt
-sudo cp systemd/alarmclock.service systemd/alarmclock-web.service /etc/systemd/system/
-sudo systemctl daemon-reload
-sudo systemctl enable --now alarmclock.service alarmclock-web.service
+sudo tools/install_system.sh    # Dienste, WLAN-Wächter, Journal, Watchdog, WLAN-Einstellungen
 
 sudo apt install nginx
 sudo cp nginx/alarmclock.conf /etc/nginx/sites-available/alarmclock
@@ -505,7 +578,11 @@ zeigt nur nginx (Port 80).
 sudo systemctl restart alarmclock.service alarmclock-web.service   # nach Code-Änderungen
 journalctl -u alarmclock.service -f
 journalctl -u alarmclock-web.service -f
+journalctl -u alarmclock.service -u alarmclock-netwatch.service -b -1   # voriger Boot
 ```
+
+`tools/install_system.sh` nach Änderungen unter `systemd/`, `networkmanager/`
+oder an `tools/netwatch.sh` erneut ausführen.
 
 Änderungen an `config/hardware.json` brauchen einen Neustart der Dienste,
 alles aus der Weboberfläche nicht.

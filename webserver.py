@@ -15,21 +15,24 @@ from urllib.parse import urlencode
 from urllib.request import urlopen
 from flask import Flask, abort, jsonify, make_response, render_template, request, send_file
 from werkzeug.utils import secure_filename
+import audio
 import config
 import integrations
 import ipc
+import network
 import programs
 import school_calendar
 import settings
 from lighting import WLEDManager
-from scheduler import describe_days, get_today_wake_item, list_music, next_alarm
+from scheduler import (describe_days, get_christmas_playlist_item, get_today_wake_item, list_music,
+                       next_alarm, wake_item)
 from weather import WeatherService
 
 app = Flask(__name__)
 app.config['MAX_CONTENT_LENGTH'] = config.MAX_UPLOAD_MB * 1024 * 1024
 GEOCODING_URL = 'https://geocoding-api.open-meteo.com/v1/search'
 CONTROL_EVENTS = ('play_today', 'play_random', 'play_file', 'stop_audio', 'wake_test',
-                  'wake_stop', 'key', 'volume')
+                  'wake_stop', 'key', 'volume', 'brightness')
 
 
 def error(message, status=400):
@@ -53,6 +56,97 @@ def public_settings():
     ha['token_set'] = bool(ha.pop('token'))
     result['home_assistant'] = ha
     return result
+
+
+def _christmas_song(day):
+    """Weihnachtslied fuer den Wecker an diesem Tag (Befehl, Laenge) oder None."""
+    if settings.get('wake')['music'] == 'none':
+        return None
+    item = get_christmas_playlist_item(day)
+    return None if item is None else {'text': item['alexa'], 'max_minutes': item['max_minutes']}
+
+
+def wake_plan(moment):
+    """Was beim Wecken um moment passiert: Licht, Musik, Ersatz ohne Netz (fuer die Uebersicht)."""
+    wake = settings.get('wake')
+    light = None
+    effect = settings.effect_by_id(wake['effect']) if wake['effect'] else None
+    if effect is not None:
+        lead = wake['light_lead_minutes']
+        light = f'{effect["name"]}' + (f' ab {lead} min vorher' if lead else ' zur Weckzeit')
+    else:
+        running = programs.active(moment)
+        if running is not None:
+            program, start, _ = running
+            light = f'{program["label"]} ab {start:%H:%M}'
+    music, fallback = None, None
+    if wake['music'] != 'none':
+        item = wake_item(wake['music'], moment.date())
+        mp3 = get_today_wake_item(moment.date())['file']
+        if item.get('alexa') and not settings.get('alexa')['ha_device_id']:
+            music = mp3  # ohne Echo spielt der Wecker das MP3 (controller._begin_alarm)
+        elif item.get('alexa'):
+            music, fallback = 'Alexa: ' + item['alexa'], mp3
+        elif wake['music'] == 'random':
+            music = 'Zufallssong'
+        else:
+            music = item['file']
+    return {'light': light, 'music': music, 'fallback': fallback}
+
+
+def _alexa_needed(moment):
+    wake = settings.get('wake')
+    if wake['music'] == 'none':
+        return False
+    return wake['music'] == 'alexa' or get_christmas_playlist_item(moment.date()) is not None
+
+
+def _system_protection():
+    """Sind Waechter, dauerhaftes Journal usw. installiert (tools/install_system.sh)?"""
+    timer = Path('/etc/systemd/system/alarmclock-netwatch.timer').is_file()
+    journal = Path('/etc/systemd/journald.conf.d/90-alarmclock-persistent.conf').is_file()
+    return timer and journal
+
+
+@app.route('/api/health')
+def health():
+    """Wecker-Check: alles, was morgen frueh funktionieren muss. Prueft live (bis ca. 3 s)."""
+    now = datetime.now()
+    checks = []
+
+    def add(key, label, ok, detail=''):
+        checks.append({'id': key, 'label': label, 'ok': ok, 'detail': detail})
+
+    clock = ipc.status()
+    add('clock', 'Wecker-Programm', clock is not None,
+        'läuft' if clock is not None else 'antwortet nicht – läuft alarmclock.service?')
+    card = audio.device_available()
+    add('audio', 'Lautsprecher', card,
+        config.ALSA_DEVICE if card is not False else f'{config.ALSA_DEVICE} fehlt (USB-Soundkarte?)')
+    upcoming = next_alarm(now)
+    moment = upcoming[0] if upcoming else now
+    song = get_today_wake_item(moment.date())['file']
+    exists = (config.BASE_DIR / song).is_file()
+    add('mp3', 'MP3 (auch Ersatz ohne Netz)', exists, song if exists else f'{song} fehlt')
+    wled = settings.get('wled')
+    if wled['enabled']:
+        place = network.endpoint('http://' + wled['host'])
+        ok = place is not None and network.probe(*place, timeout=1.5)
+        add('wled', 'WLED-Streifen', ok, wled['host'] + ('' if ok else ' nicht erreichbar'))
+    ha_url = settings.get('home_assistant')['url']
+    if ha_url:
+        place = network.endpoint(ha_url)
+        ok = place is not None and network.probe(*place, timeout=1.5)
+        add('ha', 'Home Assistant (Alexa)', ok, ha_url + ('' if ok else ' nicht erreichbar'))
+    if _alexa_needed(moment):
+        echo = settings.get('alexa')['ha_device_id']
+        add('echo', 'Echo für die Weckmusik', bool(echo),
+            'eingestellt' if echo else 'kein Echo gewählt (Smart Home) – es läuft MP3')
+    protected = _system_protection()
+    add('system', 'WLAN-Wächter & Logs', protected,
+        'installiert' if protected else 'fehlt: einmal „sudo tools/install_system.sh“ ausführen')
+    return jsonify(success=True, checks=checks, checked=now.isoformat(timespec='seconds'),
+                   plan=wake_plan(moment) if upcoming else None)
 
 
 @app.route('/')
@@ -81,6 +175,8 @@ def state():
             'at': upcoming[0].isoformat(timespec='minutes'),
             'label': upcoming[1]['label'],
             'in_minutes': int((upcoming[0] - now).total_seconds() // 60),
+            'christmas': _christmas_song(upcoming[0].date()),
+            'plan': wake_plan(upcoming[0]),
         },
         clock=ipc.status(),
         calendar_view={

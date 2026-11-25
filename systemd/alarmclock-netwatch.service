@@ -1,0 +1,7 @@
+[Unit]
+Description=AlarmClock - WLAN-Waechter (verbindet neu, startet notfalls neu)
+After=NetworkManager.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/alarmclock-netwatch

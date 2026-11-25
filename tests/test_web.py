@@ -21,13 +21,38 @@ class WebTests(TempSettingsTestCase):
         return self.client.put(f'/api/settings/{section}', json=value)
 
     def test_page_and_state(self):
-        self.assertIn('Weckprogramm', self.client.get('/').get_data(as_text=True))
+        page = self.client.get('/').get_data(as_text=True)
+        self.assertIn('Weckprogramm', page)
+        self.assertIn('Weihnachts-Playlist (Alexa / Amazon Music)', page)
+        self.assertIn('music-subtabs', page)
+        self.assertIn('christmas-song-list', page)
         state = self.client.get('/api/state').json
         self.assertEqual(state['settings']['alarms'][0]['time'], '06:15')
         self.assertIn('mp3/xmas/maria.mp3', state['music_files'])
         self.assertIsNone(state['clock'])
         self.assertEqual(state['keypad'][3], ['*', '0', '#', 'D'])
         self.assertIn('days_text', state['alarms_view'][0])
+        self.assertTrue(state['settings']['music']['christmas_playlist']['enabled'])
+
+    def test_health_check_and_wake_plan(self):
+        settings.save('alexa', {'default_device': '', 'ha_device_id': 'bff71067de175dbdf5c1836a959bf7e2'})
+        with patch('webserver.network.probe', return_value=False), \
+                patch('webserver.audio.device_available', return_value=True):
+            result = self.client.get('/api/health').json
+        checks = {check['id']: check for check in result['checks']}
+        self.assertFalse(checks['clock']['ok'])
+        self.assertTrue(checks['audio']['ok'])
+        self.assertTrue(checks['mp3']['ok'])
+        self.assertFalse(checks['wled']['ok'])
+        self.assertIn('nicht erreichbar', checks['wled']['detail'])
+        plan = webserver.wake_plan(webserver.datetime(2026, 11, 26, 6, 15))
+        self.assertEqual(plan['light'], 'Morgenlicht ab 06:00')
+        self.assertTrue(plan['music'].startswith('Alexa: spiele'))
+        self.assertTrue(plan['fallback'].startswith('mp3/'))
+        settings.save('alexa', {'default_device': '', 'ha_device_id': ''})
+        plan = webserver.wake_plan(webserver.datetime(2026, 11, 26, 6, 15))
+        self.assertTrue(plan['music'].startswith('mp3/'))
+        self.assertIsNone(plan['fallback'])
 
     def test_calendar_and_programs_in_state(self):
         state = self.client.get('/api/state').json

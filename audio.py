@@ -6,9 +6,30 @@ mpg123 still negotiates the source audio format itself. Relative paths are
 resolved against the project directory.
 """
 from pathlib import Path
+import re
 import subprocess
 import threading
 import config
+
+ASOUND_CARDS = Path('/proc/asound/cards')
+
+
+def device_available(device=None, cards_file=ASOUND_CARDS):
+    """Gibt es die Soundkarte des ALSA-Geraets? True/False, None = nicht pruefbar.
+
+    Versteht plughw:CARD=Name,DEV=0 bzw. hw:Name und hw:3,0 (Kartennummer).
+    """
+    device = device or config.ALSA_DEVICE
+    match = re.match(r'^(?:plug)?hw:(?:CARD=)?([^,]+)', device)
+    if not match:
+        return None
+    try:
+        text = Path(cards_file).read_text(encoding='utf-8', errors='replace')
+    except OSError:
+        return None
+    card = match.group(1)
+    names = re.findall(r'^\s*(\d+)\s+\[(\S+)\s*\]', text, re.MULTILINE)
+    return any(card in (number, name) for number, name in names)
 
 # mpg123 remote-control play states reported on "@P n" status lines.
 STATE_STOPPED, STATE_PAUSED, STATE_PLAYING = 0, 1, 2

@@ -142,7 +142,16 @@ class WLEDManager:
     With no explicit host, reload shared settings before every request.
     Explicit instances (e.g. tests) keep their supplied configuration.
     Status queries are synchronous and belong in the web request thread.
+
+    Kommt ein Befehl nicht an (WLED/WLAN weg), sendet der Thread den
+    neuesten Zustand alle RETRY_SECONDS erneut, bis RETRY_FOR_SECONDS um
+    sind oder ein neuerer Befehl kommt. WLED-Zustaende sind absolut
+    ({"on": true, "bri": 80, ...}), doppelt ankommen schadet also nicht.
+    So geht z. B. das Morgenlicht noch an, wenn das Netz erst spaeter
+    wiederkommt, und das Abendlicht geht sicher aus.
     """
+    RETRY_SECONDS = 5.0
+    RETRY_FOR_SECONDS = 15 * 60
     def __init__(self, host=None, enabled=None, timeout=None, report=None):
         self._shared = host is None and enabled is None and timeout is None
         values = wled_settings() if self._shared else validate_wled_settings(
@@ -152,6 +161,8 @@ class WLEDManager:
         self.enabled, self.host, self.timeout = values['enabled'], values['host'], values['timeout']
         self.report = report
         self.last_error = None
+        # None = noch unbekannt; Meldungen nur beim Wechsel, nicht bei jedem Befehl.
+        self.online = None
         self.commands = queue.Queue(maxsize=1)
         self.stopping = threading.Event()
         self._thread = None
@@ -204,9 +215,13 @@ class WLEDManager:
             self.last_error = 'Invalid WLED response'
         else:
             self.last_error = None
-            self.log('WLED connected: %s', host)
+            if self.online is not True:
+                self.log('WLED connected: %s', host)
+            self.online = True
             return result
-        self.log('WLED unavailable: %s (%s)', host, self.last_error)
+        if self.online is not False:
+            self.log('WLED unavailable: %s (%s)', host, self.last_error)
+        self.online = False
         return None
 
     def get_status(self):
@@ -263,12 +278,29 @@ class WLEDManager:
         self.send({'ps': preset_id})
 
     def _run(self):
+        pending, retry_at, give_up_at = None, 0.0, 0.0
         while not self.stopping.is_set():
             try:
                 state = self.commands.get(timeout=0.1)
+                fresh = True
             except queue.Empty:
+                if pending is None or time.monotonic() < retry_at:
+                    continue
+                state, fresh = pending, False
+            delivered = self._request(state) is not None or not self.enabled
+            now = time.monotonic()
+            if delivered or self.last_error not in ('Connection failed', 'Connection timeout'):
+                if not fresh and delivered:
+                    self.log('WLED: letzter Befehl nachgeholt')
+                pending = None
                 continue
-            self._request(state)
+            if fresh:
+                give_up_at = now + self.RETRY_FOR_SECONDS
+            if now >= give_up_at:
+                self.log('WLED: Befehl nach %d min verworfen', self.RETRY_FOR_SECONDS // 60)
+                pending = None
+                continue
+            pending, retry_at = state, now + self.RETRY_SECONDS
 
     def close(self):
         self.stopping.set()

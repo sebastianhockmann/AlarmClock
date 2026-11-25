@@ -11,7 +11,7 @@ import settings
 from programs import ProgramRunner
 from scheduler import (AlarmScheduler, get_random_item, get_today_wake_item, list_music,
                        wake_item)
-from wake import WakeSession, alexa_volume_command
+from wake import WakeSession, alexa_volume_command, percent_to_bri
 
 NOTICE_SECONDS = 5
 TEST_ALARM = {'id': 'test', 'label': 'Weck-Test'}
@@ -30,7 +30,7 @@ LAMP_DEFAULT_PERCENT = 50
 class ClockController:
     def __init__(self, player, send_light, browser=None, backlight=None, emit=None,
                  store=settings, alarm_scheduler=None, weather=None, integration=None,
-                 alexa=None, dimmer=None, programs=None):
+                 alexa=None, dimmer=None, programs=None, network=None):
         self.player = player
         self.send_light = send_light
         # Linker Drehknopf: alle Effekte des WLED-Geraets (lighting.EffectBrowser).
@@ -54,6 +54,8 @@ class ClockController:
             report=lambda message: self.emit('notice', message))
         # Morgen-/Abendlicht nach Uhrzeit und Schulkalender (programs.py).
         self.programs = programs or ProgramRunner(send_light, store)
+        # network() -> True/False/None (network.NetworkMonitor.online): False = Heimnetz weg.
+        self.network = network or (lambda: None)
         self.session = None
         self.active_item = None
         self.notice = ''
@@ -134,8 +136,16 @@ class ClockController:
             if item.get('alexa') and not self.alexa.device():
                 print('Wecken mit Alexa: kein Echo eingestellt, spiele MP3', flush=True)
                 item = get_today_wake_item(now.date(), self.store)
+            elif item.get('alexa') and self.network() is False:
+                # Ohne Netz erreicht kein Befehl das Echo: gleich das MP3, nicht erst nach 20 s.
+                print('Wecken mit Alexa: Netzwerk weg, spiele MP3', flush=True)
+                item = {**get_today_wake_item(now.date(), self.store), 'message': item['message']}
+        if item.get('max_minutes'):
+            # Weihnachts-Playlist: Alexa meldet das Liedende nicht, Schluss nach Liedlaenge.
+            program = {**program, 'max_minutes': item['max_minutes']}
+            self.session.program = program
         self.active_item = item
-        self._debug(f'Alarm ausgeloest ({alarm["label"]}): {item["file"]}')
+        self._debug(f'Alarm ausgeloest ({alarm["label"]}): {item.get("alexa") or item["file"]}')
         error = self.session.start_music(item, monotonic)
         if error:
             print(f'Audio Fehler: {error}', flush=True)
@@ -212,6 +222,8 @@ class ClockController:
             text = self._alexa_failed(value, monotonic)
         elif event == 'volume':
             text = self._set_volume(int(value))
+        elif event == 'brightness':
+            text = self._set_brightness(int(value))
         elif event == 'play_today':
             text = self._play(get_today_wake_item(store=self.store))
         elif event == 'play_random':
@@ -340,6 +352,15 @@ class ClockController:
         self._debug(f'Lautstaerke: {volume}%')
         return f'Lautstaerke: {volume}%'
 
+    def _set_brightness(self, percent):
+        """Helligkeit aus der Weboberflaeche (1-100 %); haelt ein Lichtprogramm an wie der Knopf."""
+        percent = max(1, min(100, percent))
+        self.programs.override()
+        self.send_light({'on': True, 'bri': percent_to_bri(percent)})
+        if self.browser is not None:
+            self.browser.power = True
+        return f'Helligkeit {percent}%'
+
     def _toggle_audio(self):
         """Ein Knopf fuer alles Hoerbare: Wecker aus, sonst Musik an bzw. aus."""
         if self.session is not None:
@@ -383,6 +404,8 @@ class ClockController:
             return f'Alexa: {message}'
         item = get_today_wake_item(store=self.store)
         self.active_item = {**item, 'message': self.active_item['message']}
+        # MP3 endet von selbst; die Liedlaenge der Weihnachts-Playlist gilt nicht mehr.
+        session.program = {**session.program, 'max_minutes': self.store.get('wake')['max_minutes']}
         error = session.start_music(item, monotonic)
         if error:
             print(f'Audio Fehler: {error}', flush=True)

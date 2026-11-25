@@ -153,6 +153,42 @@ def date_key(value):
     return value
 
 
+def month_day(value):
+    """'MM-DD' ohne Jahr (wiederkehrender Zeitraum)."""
+    value = date_key(value)
+    if len(value) != 5:
+        raise ValueError('Datum als MM-TT ohne Jahr angeben')
+    return value
+
+
+def song_length(value):
+    """Liedlaenge 'm:ss' oder ganze Minuten; '' = keine Angabe. Ergebnis 'm:ss' oder ''."""
+    if value is None:
+        return ''
+    if isinstance(value, (int, float)) and not isinstance(value, bool):
+        value = str(int(value))
+    if not isinstance(value, str):
+        raise ValueError('Laenge als m:ss angeben, z. B. 3:45')
+    value = value.strip()
+    if not value:
+        return ''
+    match = re.fullmatch(r'(\d{1,2})(?::(\d{2}))?', value)
+    if not match or int(match.group(2) or 0) >= 60:
+        raise ValueError('Laenge als m:ss angeben, z. B. 3:45')
+    seconds = int(match.group(1)) * 60 + int(match.group(2) or 0)
+    if not 30 <= seconds <= 30 * 60:
+        raise ValueError('Laenge zwischen 0:30 und 30:00')
+    return f'{seconds // 60}:{seconds % 60:02d}'
+
+
+def length_seconds(value):
+    """'m:ss' -> Sekunden, '' -> None."""
+    if not value:
+        return None
+    minutes, seconds = value.split(':')
+    return int(minutes) * 60 + int(seconds)
+
+
 def music_file(value):
     """Pfad relativ zum Projekt, muss im Musikordner liegen und .mp3 sein."""
     if not isinstance(value, str) or not value.strip():
@@ -257,6 +293,8 @@ FIELD_NAMES = {
     'volume_start': 'Lautstaerke Start', 'volume_end': 'Lautstaerke Ende',
     'volume_ramp_seconds': 'Lautstaerke-Rampe', 'max_minutes': 'Maximale Dauer',
     'snooze_minutes': 'Schlummerzeit', 'date': 'Datum', 'file': 'Datei',
+    'start_date': 'Beginn', 'end_date': 'Ende',
+    'stop_after_minutes': 'Hoechstdauer', 'length': 'Laenge', 'service': 'Musikdienst', 'daily': 'Taeglich',
     'message': 'Spruch', 'start': 'Beginn', 'end': 'Ende', 'text': 'Text',
     'url': 'URL', 'service': 'Service', 'entity_id': 'Entity-ID', 'device': 'Geraet',
     'device_id': 'Echo', 'colors': 'Farben', 'calendar': 'Kalender',
@@ -349,6 +387,26 @@ ALEXA_SONG_SPEC = {
 MUSIC_SPEC = {
     'default_song': (music_file, 'mp3/xmas/default.mp3'),
     'default_message': (text(120), 'Guten Morgen!'),
+}
+
+# Weihnachts-Playlist: ersetzt im Zeitraum die Musik aller Wecker (Alexa, ein Lied pro Morgen).
+CHRISTMAS_PLAYLIST_SPEC = {
+    'enabled': (boolean, True),
+    'start_date': (month_day, '11-25'),
+    'end_date': (month_day, '12-26'),
+    'stop_after_minutes': (int_range(1, 30), 4),
+    # Wird an jeden Befehl gehaengt ("... auf Amazon Music"); leer = Standarddienst der Alexa-App.
+    'service': (text(40), 'Amazon Music'),
+    # daily: an Tagen ohne Wecker (Wochenende, Ferien) trotzdem um 'time' wecken.
+    'daily': (boolean, True),
+    'time': (hhmm, '06:15'),
+}
+
+# length: Liedlaenge 'm:ss' (leer = stop_after_minutes) - danach sagt der Wecker "Stopp".
+CHRISTMAS_SONG_SPEC = {
+    'text': (text(200, required=True), None),
+    'message': (text(120), ''),
+    'length': (song_length, ''),
 }
 
 HOME_ASSISTANT_SPEC = {
@@ -517,6 +575,20 @@ def validate_music(value, strict=True, defaults=None):
                                         strict, 'Rotation', 400)
     result['alexa_songs'] = _validate_list(value.get('alexa_songs', []), _strict_fields(ALEXA_SONG_SPEC),
                                            strict, 'Alexa-Lied', 200)
+    playlist_defaults = (defaults or {}).get('christmas_playlist', {})
+    playlist = value.get('christmas_playlist', playlist_defaults)
+    if not isinstance(playlist, dict):
+        if strict:
+            raise ValueError('Weihnachts-Playlist muss ein Objekt sein')
+        playlist = {}
+    result['christmas_playlist'] = validate_fields(
+        playlist, CHRISTMAS_PLAYLIST_SPEC, strict, playlist_defaults, 'Weihnachts-Playlist: ')
+    result['christmas_playlist']['songs'] = _validate_list(
+        playlist.get('songs', playlist_defaults.get('songs', [])),
+        _strict_fields(CHRISTMAS_SONG_SPEC), strict, 'Weihnachtslied', 100)
+    if (strict and result['christmas_playlist']['enabled']
+            and not result['christmas_playlist']['songs']):
+        raise ValueError('Weihnachts-Playlist: mindestens ein Lied eintragen oder Playlist ausschalten')
     return result
 
 

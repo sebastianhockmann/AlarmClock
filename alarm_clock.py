@@ -13,6 +13,7 @@ import school_calendar
 import settings
 from audio import AudioPlayer
 from controller import ClockController
+from scheduler import AlarmScheduler
 from lighting import EffectBrowser, WLEDManager, browser_entries
 from scheduler import get_greeting
 from util import scrolling_text
@@ -91,7 +92,10 @@ def main():
         browser.refresh()
         controller = ClockController(player, wled.send, browser=browser,
                                      backlight=lcd_set_backlight, emit=emit,
-                                     weather=WeatherService(settings))
+                                     weather=WeatherService(settings),
+                                     alarm_scheduler=AlarmScheduler(
+                                         settings, state_file=config.ALARM_STATE_FILE),
+                                     network=lambda: monitor.online)
         inputs = open_inputs(emit)
         try:
             server = ipc.CommandServer(emit, lambda: {**controller.status(),
@@ -123,8 +127,10 @@ def main():
             text = controller.message(monotonic, greeting['text'])
             if text != previous_text:
                 previous_text, scroll_start = text, monotonic
+            # Rechts neben der Uhrzeit: Netz weg -> Alexa/WLED/Home Assistant gehen nicht.
             lcd_show(now, scrolling_text(text, config.LCD_COLS,
-                                         int((monotonic - scroll_start) / 0.4)))
+                                         int((monotonic - scroll_start) / 0.4)),
+                     'Netz?' if monitor.online is False else '')
             time.sleep(0.02)
     finally:
         if server is not None:

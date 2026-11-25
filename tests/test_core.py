@@ -93,6 +93,98 @@ class SchedulerTests(TempSettingsTestCase):
         settings.save('music', music)
         self.assertIsNone(scheduler.wake_item('alexa', date(2026, 9, 28)).get('alexa'))
 
+    def test_christmas_playlist_replaces_wake_music_in_its_period(self):
+        songs = settings.get('music')['christmas_playlist']['songs']
+        self.assertIsNone(scheduler.get_christmas_playlist_item(date(2026, 11, 24)))
+        first = scheduler.wake_item('daily', date(2026, 11, 25))
+        self.assertEqual(first['alexa'], songs[0]['text'] + ' auf Amazon Music')
+        self.assertEqual(first['message'], 'Guten Morgen!')  # leerer Spruch -> Standardspruch
+        self.assertEqual(first['max_minutes'], 4)
+        self.assertEqual(scheduler.wake_item('random', date(2026, 11, 26))['alexa'],
+                         songs[1]['text'] + ' auf Amazon Music')
+        self.assertEqual(scheduler.wake_item('alexa', date(2026, 12, 26))['alexa'],
+                         songs[31 % len(songs)]['text'] + ' auf Amazon Music')
+        self.assertIsNone(scheduler.wake_item('daily', date(2026, 12, 27)).get('alexa'))
+
+    def test_christmas_playlist_song_length_and_new_year_period(self):
+        music = settings.get('music')
+        music['christmas_playlist'].update(start_date='12-20', end_date='01-06', service='', songs=[
+            {'text': 'spiele A', 'length': '3:05'}, {'text': 'spiele B', 'message': 'Hallo'}])
+        settings.save('music', music)
+        item = scheduler.get_christmas_playlist_item(date(2026, 12, 20))
+        self.assertEqual(item['max_minutes'], (185 + scheduler.ALEXA_START_SECONDS) / 60)
+        later = scheduler.get_christmas_playlist_item(date(2027, 1, 2))  # 13 Tage nach Start
+        self.assertEqual((later['alexa'], later['message']), ('spiele B', 'Hallo'))
+        self.assertIsNone(scheduler.get_christmas_playlist_item(date(2027, 1, 7)))
+        music['christmas_playlist']['enabled'] = False
+        settings.save('music', music)
+        self.assertIsNone(scheduler.get_christmas_playlist_item(date(2026, 12, 24)))
+
+    def test_alexa_music_command_adds_service_once(self):
+        self.assertEqual(scheduler.alexa_music_command('spiele X ', 'Amazon Music'),
+                         'spiele X auf Amazon Music')
+        self.assertEqual(scheduler.alexa_music_command('spiele X auf amazon music', 'Amazon Music'),
+                         'spiele X auf amazon music')
+        self.assertEqual(scheduler.alexa_music_command('spiele X', ''), 'spiele X')
+
+    def test_christmas_playlist_wakes_once_every_day_of_its_period(self):
+        alarms = scheduler.AlarmScheduler()
+        labels = lambda moment: [(kind, alarm['label']) for kind, alarm in alarms.due(moment)]
+        self.assertEqual(labels(datetime(2026, 11, 25, 6, 15)), [('alarm', 'Schule')])  # Schultag
+        self.assertEqual(labels(datetime(2026, 11, 25, 6, 16)), [])
+        for day in (28, 29):  # Wochenende
+            self.assertEqual(labels(datetime(2026, 11, day, 6, 15)), [('alarm', 'Weihnachtslieder')])
+        for day in (23, 24, 25, 26):  # Ferien, Heiligabend, Feiertage
+            self.assertEqual(labels(datetime(2026, 12, day, 6, 15)), [('alarm', 'Weihnachtslieder')])
+        self.assertEqual(labels(datetime(2026, 12, 27, 6, 15)), [])
+        self.assertEqual(labels(datetime(2026, 11, 24, 6, 15)), [('alarm', 'Schule')])
+        self.assertEqual(scheduler.next_alarm(datetime(2026, 11, 27, 7, 0))[1]['label'],
+                         'Weihnachtslieder')
+        self.assertEqual(scheduler.next_alarm(datetime(2026, 12, 26, 7, 0))[1]['label'], 'Schule')
+
+    def test_christmas_playlist_without_daily_only_uses_existing_alarms(self):
+        music = settings.get('music')
+        music['christmas_playlist'].update(daily=False)
+        settings.save('music', music)
+        self.assertEqual(scheduler.AlarmScheduler().due(datetime(2026, 11, 28, 6, 15)), [])
+        music['christmas_playlist'].update(daily=True, time='08:00')
+        settings.save('music', music)
+        settings.save('wake', {**settings.get('wake'), 'music': 'none'})
+        self.assertEqual(scheduler.AlarmScheduler().due(datetime(2026, 11, 28, 8, 0)), [])
+
+    def test_christmas_alarm_on_free_day_gets_light_lead_and_can_be_stopped(self):
+        settings.save('wake', {**settings.get('wake'), 'effect': 'morgenlicht', 'light_lead_minutes': 10})
+        alarms = scheduler.AlarmScheduler()
+        events = alarms.due(datetime(2026, 11, 28, 6, 5))
+        self.assertEqual([kind for kind, _ in events], ['light'])
+        alarms.skip(events[0][1]['id'], date(2026, 11, 28))
+        self.assertEqual(alarms.due(datetime(2026, 11, 28, 6, 15)), [])
+
+    def test_missed_alarm_is_caught_up_after_a_restart(self):
+        # Neustart um 06:20: der 06:15-Wecker klingelt noch, um 06:26 nicht mehr.
+        self.assertEqual([kind for kind, _ in scheduler.AlarmScheduler().due(
+            datetime(2026, 9, 28, 6, 20))], ['alarm'])
+        self.assertEqual(scheduler.AlarmScheduler().due(datetime(2026, 9, 28, 6, 26)), [])
+
+    def test_stalled_loop_still_fires_the_skipped_minute(self):
+        alarms = scheduler.AlarmScheduler()
+        self.assertEqual(alarms.due(datetime(2026, 9, 28, 5, 30)), [])
+        self.assertEqual(alarms.due(datetime(2026, 9, 28, 6, 14, 59)), [])
+        self.assertEqual(len(alarms.due(datetime(2026, 9, 28, 6, 17))), 1)
+        self.assertEqual(alarms.due(datetime(2026, 9, 28, 6, 18)), [])
+
+    def test_fired_alarms_survive_a_restart_with_state_file(self):
+        state = self.dir / 'alarm_state.json'
+        first = scheduler.AlarmScheduler(state_file=state)
+        self.assertEqual(len(first.due(MONDAY_0615)), 1)
+        again = scheduler.AlarmScheduler(state_file=state)
+        self.assertEqual(again.due(MONDAY_0615.replace(minute=17)), [])
+        again.skip('wecker', date(2026, 9, 29))
+        self.assertEqual(scheduler.AlarmScheduler(state_file=state).due(
+            datetime(2026, 9, 29, 6, 15)), [])
+        state.write_text('kaputt', encoding='utf-8')
+        self.assertEqual(len(scheduler.AlarmScheduler(state_file=state).due(MONDAY_0615)), 1)
+
     def test_random_song_comes_from_the_music_folder(self):
         item = scheduler.get_random_item(rng=random.Random(1))
         self.assertIn(item['file'], scheduler.list_music())
@@ -347,6 +439,75 @@ class ControllerTests(TempSettingsTestCase):
         clock.handle('alexa_error', 'Nicht erreichbar', 2)
         self.player.play.assert_called_once()
         self.assertEqual(clock.notice, 'Alexa Fehler: MP3')
+
+    def test_christmas_wake_plays_one_alexa_song_ramps_and_stops(self):
+        music = settings.get('music')
+        music['christmas_playlist']['songs'][0]['length'] = '3:00'
+        settings.save('music', music)
+        alexa = self.alexa_mock()
+        clock = self.make(alexa=alexa)
+        clock.tick(datetime(2026, 11, 25, 6, 15), 0)  # Mittwoch, Schultag, Wecker "Schule"
+        self.assertTrue(clock.alarm_active)
+        self.player.play.assert_not_called()
+        self.assertEqual(self.said(alexa)[:2],
+                         ['Lautstärke 2', 'spiele Last Christmas von Wham! auf Amazon Music'])
+        clock.tick(datetime(2026, 11, 25, 6, 16), 60)
+        self.assertEqual(self.said(alexa)[-1], 'Lautstärke 7')  # leise -> laut
+        clock.tick(datetime(2026, 11, 25, 6, 18), 182)
+        self.assertTrue(clock.alarm_active)
+        clock.tick(datetime(2026, 11, 25, 6, 18), 183)
+        self.assertFalse(clock.alarm_active)
+        self.assertEqual(self.said(alexa)[-1], 'Stopp')
+
+    def test_christmas_wake_on_saturday_plays_alexa_song(self):
+        alexa = self.alexa_mock()
+        clock = self.make(alexa=alexa)
+        clock.tick(datetime(2026, 11, 28, 6, 15), 0)
+        self.assertTrue(clock.alarm_active)
+        songs = settings.get('music')['christmas_playlist']['songs']
+        self.assertEqual(self.said(alexa)[1], songs[3]['text'] + ' auf Amazon Music')
+
+    def test_christmas_wake_without_echo_plays_mp3(self):
+        clock = self.make(alexa=self.alexa_mock(device=None))
+        clock.tick(datetime(2026, 11, 25, 6, 15), 0)
+        self.player.play.assert_called_once()
+        self.assertEqual(clock.session.program['max_minutes'], settings.get('wake')['max_minutes'])
+
+    def test_christmas_wake_respects_stop_in_light_lead(self):
+        settings.save('wake', {**settings.get('wake'), 'light_lead_minutes': 10})
+        alexa = self.alexa_mock()
+        clock = self.make(alexa=alexa)
+        clock.tick(datetime(2026, 11, 25, 6, 5), 0)
+        self.assertEqual(clock.session.phase, 'light')
+        clock.stop()
+        clock.tick(datetime(2026, 11, 25, 6, 15), 600)
+        self.assertFalse(clock.alarm_active)
+        self.assertEqual(self.said(alexa), [])
+
+    def test_web_brightness_sets_the_strip_and_pauses_the_program(self):
+        clock = self.make()
+        clock.programs = Mock()
+        clock.handle('brightness', 150, 0)
+        self.send.assert_called_with({'on': True, 'bri': 255})
+        clock.programs.override.assert_called_once()
+        self.assertEqual(clock.notice, 'Helligkeit 100%')
+
+    def test_christmas_wake_without_network_plays_mp3_at_once(self):
+        alexa = self.alexa_mock()
+        clock = self.make(alexa=alexa, network=lambda: False)
+        clock.tick(datetime(2026, 11, 25, 6, 15), 0)
+        self.assertTrue(clock.alarm_active)
+        self.player.play.assert_called_once()
+        self.assertEqual(self.said(alexa), [])
+        self.assertEqual(clock.session.program['max_minutes'], settings.get('wake')['max_minutes'])
+
+    def test_christmas_alexa_failure_falls_back_to_mp3_with_normal_limit(self):
+        alexa = self.alexa_mock()
+        clock = self.make(alexa=alexa)
+        clock.tick(datetime(2026, 11, 25, 6, 15), 0)
+        clock.handle('alexa_error', 'Nicht erreichbar', 1)
+        self.player.play.assert_called_once()
+        self.assertEqual(clock.session.program['max_minutes'], settings.get('wake')['max_minutes'])
 
     def test_pressed_right_knob_sets_alexa_volume_after_a_pause(self):
         alexa = self.alexa_mock()

@@ -1,6 +1,6 @@
 # Handoff — AlarmClock
 
-_Status as of 2026-11-03._
+_Status as of 2026-11-25._
 
 ## Where things stand
 
@@ -50,9 +50,25 @@ Restructured for maintainability:
 - Dienste laufen seit 2026-11-03 17:25 mit dem neuen Code.
 - WLAN-Power-Save aus (Konfig installiert). Offen: Morgen-/Abendlicht am echten Streifen ansehen.
 
+## 2026-11-25: Ausfall-Analyse, Robustheit, Weboberflaeche
+
+- Ausfall 24.11. abends bis Neustart 25.11. 08:48: Pi im Netz weg, Display lief, morgens
+  kein Licht/keine Musik (erster Tag der Weihnachts-Playlist = Alexa). Ursache nicht mehr
+  belegbar: Journal war volatile (RPi-OS-Default). nginx-Log endet 24.11. 22:05:18.
+  Bekannt: WLAN -73 dBm auf DFS-Kanal 100 (5,5 GHz), NM autoconnect-retries Standard 4.
+- Neu: `tools/install_system.sh` (sudo) installiert persistentes Journal, WLAN-Waechter
+  (`tools/netwatch.sh` -> /usr/local/sbin, Timer 1 min), Hardware-Watchdog,
+  NM autoconnect-retries 0, Dienste mit Restart=always. **Noch nicht ausgefuehrt.**
+- Wecker: Alexa-Wecken ohne Netz -> sofort MP3; WLED-Befehle werden bis 15 min nachgesendet
+  (Log nur bei Wechsel); Weck-Sperre in `config/alarm_state.json`, verpasste Weckzeiten
+  bis 10 min nachgeholt; LCD "Netz?"; ALSA per Kartenname `plughw:CARD=Device,DEV=0`.
+- Weboberflaeche: Uebersicht mit Plan fuers naechste Wecken, Wecker-Schaltern,
+  Wecker-Check (`/api/health`), Licht an/aus/Helligkeit (ipc `brightness`); Markierung
+  ungespeicherter Aenderungen, Offline-Balken, groessere Touch-Flaechen.
+
 ## Tests
 
-`.venv/bin/python -m unittest discover -s tests -v` → 111 tests, all green on the Pi
+`.venv/bin/python -m unittest discover -s tests -v` → 140 tests, all green on the Pi
 (system Python lacks Flask, so use the venv).
 Integration-checked on the Pi: new web UI against the real WLED (16.0.1, 264 LEDs,
 AudioReactive with I2S mic active), Open-Meteo search, and the clock main loop with a
@@ -60,14 +76,15 @@ stub LCD driven over `ipc`. Rendered pages checked via headless Firefox (desktop
 
 ## Open items
 
-1. WLAN power save is off (`networkmanager/wifi-powersave-off.conf` installed 2026-11-03).
-   Watch `journalctl -u alarmclock.service` for further network outages.
+1. Run `sudo tools/install_system.sh` (restarts the services with the new code). Afterwards
+   outages are in `journalctl -u alarmclock.service -u alarmclock-netwatch.service -b -1`.
+   Router: consider a non-DFS 5 GHz channel (36-48) or 2.4 GHz for the Pi.
 2. Verify on hardware: morning/evening light, alarm "Schule", snooze via keypad, wake test,
    key A (HA Deckenlampe).
 3. Alexa: `alexa_remote_control.sh` not installed; key B needs it (or use
    "Echo ueber Home Assistant").
 4. Home Assistant and weather location are configured (done).
-5. Alarm "already fired today" lock is in memory only (restart within the alarm minute can
-   re-trigger; missed alarms are not caught up).
+5. Alexa can accept a command and still stay silent (e.g. song not found); that is not
+   detectable - the MP3 fallback only covers failed commands / no network.
 6. Web UI has no authentication — LAN-only by design.
 7. Music library is still the Christmas starter set.

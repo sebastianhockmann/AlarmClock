@@ -34,9 +34,11 @@ def _sanitize(text: str) -> str:
     return filtered
 
 
-def lcd_show(now, text):
-    """Zeigt Uhrzeit + 1 Textzeile. Beide exakt 16 Zeichen."""
-    lines = [_sanitize(now.strftime("%H:%M:%S")), _sanitize(text)]
+def lcd_show(now, text, status=""):
+    """Zeigt Uhrzeit (+ kurzer Status rechtsbuendig) und 1 Textzeile. Beide exakt 16 Zeichen."""
+    clock = now.strftime("%H:%M:%S")
+    first = clock + status.rjust(config.LCD_COLS - len(clock)) if status else clock
+    lines = [_sanitize(first), _sanitize(text)]
     for row, line in enumerate(lines):
         if _last_lines[row] != line:
             lcd.cursor_pos = (row, 0)

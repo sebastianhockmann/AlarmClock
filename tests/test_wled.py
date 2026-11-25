@@ -1,5 +1,6 @@
 import json
 import threading
+import time
 import unittest
 from unittest.mock import patch
 from urllib.error import HTTPError, URLError
@@ -88,6 +89,55 @@ class WLEDTests(TempSettingsTestCase):
             release.set()
             manager.close()
 
+
+    def test_failed_command_is_resent_until_it_arrives(self):
+        calls, done = [], threading.Event()
+        original = self.http.return_value
+
+        def open_url(request, **kwargs):
+            calls.append(json.loads(request.data))
+            if len(calls) < 3:
+                raise URLError(OSError(113, 'No route to host'))
+            done.set()
+            return original
+        self.http.side_effect = open_url
+        manager = WLEDManager(host='wled.local')
+        manager.RETRY_SECONDS = 0.05
+        try:
+            manager.send({'on': True, 'bri': 80})
+            self.assertTrue(done.wait(2))
+            self.assertEqual(calls, [{'on': True, 'bri': 80}] * 3)
+            self.assertTrue(manager.online)
+        finally:
+            manager.close()
+
+    def test_retry_gives_way_to_newer_commands_and_skips_http_errors(self):
+        calls = []
+        original = self.http.return_value
+
+        def open_url(request, **kwargs):
+            calls.append(json.loads(request.data))
+            if calls[-1] == {'on': True}:
+                raise URLError(OSError(113, 'No route to host'))
+            if calls[-1] == {'bri': 1}:
+                raise HTTPError('http://wled.local/json/state', 400, 'bad', {}, None)
+            return original
+        self.http.side_effect = open_url
+        manager = WLEDManager(host='wled.local')
+        manager.RETRY_SECONDS = 0.05
+        try:
+            manager.send({'on': True})
+            deadline = time.monotonic() + 2
+            while len(calls) < 2 and time.monotonic() < deadline:
+                time.sleep(0.01)
+            manager.send({'on': False})
+            manager.send({'bri': 1})
+            time.sleep(0.3)
+            self.assertEqual(calls[-1], {'bri': 1})
+            self.assertNotIn({'on': True}, calls[calls.index({'bri': 1}):])
+            self.assertEqual(calls.count({'bri': 1}), 1)
+        finally:
+            manager.close()
 
 if __name__ == '__main__':
     unittest.main()

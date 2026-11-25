@@ -21,6 +21,8 @@ DEFAULTS_FILE = CONFIG_DIR / 'defaults.json'
 EFFECTS_FILE = CONFIG_DIR / 'effects.json'
 # Laufzeitdateien der Weboberflaeche (gitignored).
 SETTINGS_FILE = CONFIG_DIR / 'settings.json'
+# Sperre "heute schon geweckt" ueber Neustarts hinweg (scheduler.AlarmScheduler).
+ALARM_STATE_FILE = CONFIG_DIR / 'alarm_state.json'
 # Alte Ablageorte vor dem Umzug nach config/, siehe settings.migrate_legacy().
 LEGACY_SETTINGS_FILE = BASE_DIR / 'settings.json'
 LEGACY_MAPPING_FILE = BASE_DIR / 'mp3_mapping.json'
@@ -92,7 +94,7 @@ LEGACY_BUTTON_ENABLED = bool(_hw('inputs', 'legacy_button_enabled', False))
 BUTTON_PIN = int(_hw('inputs', 'legacy_button_pin', 17))
 
 # Audio
-ALSA_DEVICE = os.environ.get('ALARM_ALSA_DEVICE') or _hw('audio', 'alsa_device', 'plughw:3,0')
+ALSA_DEVICE = os.environ.get('ALARM_ALSA_DEVICE') or _hw('audio', 'alsa_device', 'plughw:CARD=Device,DEV=0')
 VOLUME_STEP = int(_hw('audio', 'volume_step', 5))
 MUSIC_DIR = BASE_DIR / _hw('audio', 'music_dir', 'mp3')
 CLICK_SOUND = BASE_DIR / _hw('audio', 'click_sound', 'sounds/click.wav')

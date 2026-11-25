@@ -20,7 +20,8 @@
     "legacy_button_pin": 17
   },
   "audio": {
-    "alsa_device": "plughw:3,0",
+    "_hinweis_alsa": "Geraet per Kartenname statt Nummer: die Nummer (plughw:3,0) kann sich nach einem Neustart aendern. Namen: aplay -l (Text nach card N:).",
+    "alsa_device": "plughw:CARD=Device,DEV=0",
     "volume_step": 5,
     "music_dir": "mp3",
     "click_sound": "sounds/click.wav"

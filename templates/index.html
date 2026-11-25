@@ -108,7 +108,51 @@ details summary { cursor: pointer; color: var(--muted); font-size: 13px; }
 #toast.show { opacity: 1; } #toast.bad { background: var(--bad); color: #fff; }
 .help { background: var(--accent-soft); border-radius: 10px; padding: 10px 12px; font-size: 13px; margin-top: 10px; }
 .help ol { margin: 4px 0; padding-left: 18px; }
+.subtabs { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 12px; }
+.subtabs button { border-radius: 999px; background: var(--chip); border-color: transparent; padding: 6px 12px; font-size: 14px; }
+.subtabs button.active { background: var(--accent); color: #fff; }
+.card.sub { display: none; } .card.sub.active { display: block; }
+.status-line { background: var(--accent-soft); border-radius: 10px; padding: 8px 12px; font-size: 14px; margin: 6px 0 12px; }
+.status-line:empty { display: none; }
+.sub-h { font-size: 14px; margin: 16px 0 2px; }
+table.songs td { padding: 3px 2px; }
+@media (max-width: 620px) { th.opt, td.opt { display: none; } }
 code { background: var(--chip); padding: 1px 5px; border-radius: 5px; font-size: 12px; }
+/* Verbindung weg */
+#offline { display: none; background: var(--bad); color: #fff; text-align: center; padding: 6px 12px; font-size: 14px; }
+#offline.show { display: block; }
+/* Ungespeicherte Aenderungen */
+nav button.dirty::after { content: " •"; color: var(--accent); font-weight: 700; }
+nav button.active.dirty::after { color: #fff; }
+button.primary.dirty { box-shadow: 0 0 0 3px var(--accent-soft), 0 0 0 5px var(--accent); }
+button.primary.dirty::after { content: " •"; }
+/* Wecker-Check */
+.checks { list-style: none; padding: 0; margin: 0; display: grid; gap: 2px 16px; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); }
+.checks li { display: flex; gap: 8px; padding: 5px 0; align-items: baseline; }
+.checks li .i { flex: none; width: 1.2em; text-align: center; font-weight: 700; }
+.checks li.ok .i { color: var(--ok); } .checks li.bad .i { color: var(--bad); } .checks li.unknown .i { color: var(--muted); }
+.checks li small { display: block; color: var(--muted); font-size: 12px; word-break: break-word; }
+.checks li.bad small { color: var(--bad); }
+.plan { margin-top: 8px; display: grid; gap: 2px; font-size: 14px; }
+.plan .muted { font-size: 13px; }
+/* Schnellzugriff */
+.quick-alarm { display: flex; align-items: center; gap: 10px; padding: 8px 0; border-top: 1px solid var(--line); }
+.quick-alarm:first-child { border-top: 0; }
+.quick-alarm b { font-size: 20px; font-variant-numeric: tabular-nums; min-width: 64px; }
+.quick-alarm .muted { flex: 1; font-size: 13px; }
+.light-row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.light-row input[type=range] { flex: 1; min-width: 140px; }
+/* Grosse Bedienflaechen am Handy */
+@media (pointer: coarse) {
+  button { min-height: 42px; }
+  button.small { min-height: 38px; padding: 6px 12px; }
+  nav button { padding: 10px 14px; }
+  .days button { width: 44px; min-height: 40px; }
+  input, select { min-height: 42px; }
+  input[type=checkbox], input[type=range] { min-height: 0; }
+  .switch input { width: 50px; height: 30px; } .switch input::after { width: 24px; height: 24px; }
+  .switch input:checked::after { left: 23px; }
+}
 </style>
 </head>
 <body>
@@ -118,6 +162,7 @@ code { background: var(--chip); padding: 1px 5px; border-radius: 5px; font-size:
     <span class="status-dot" id="clock-status">…</span>
   </div>
   <nav id="tabs"></nav>
+  <div id="offline"></div>
 </header>
 <main>
 
@@ -129,10 +174,20 @@ code { background: var(--chip); padding: 1px 5px; border-radius: 5px; font-size:
         <div class="muted">Nächster Wecker</div>
         <div class="big" id="next-alarm">–</div>
         <div class="muted" id="next-alarm-info"></div>
+        <div class="plan" id="next-alarm-plan"></div>
       </div>
       <div class="spacer"></div>
       <label class="switch"><input type="checkbox" id="master-switch"> <span>Wecker aktiv</span></label>
     </div>
+    <div id="quick-alarms" style="margin-top:12px"></div>
+    <div class="row end" style="margin-top:4px"><a href="#alarms" onclick="showTab('alarms');return false">Weckzeiten bearbeiten →</a></div>
+  </div>
+  <div class="card">
+    <div class="row"><h2 style="flex:1">Wecker-Check</h2>
+      <span class="muted" id="health-time"></span>
+      <button class="small" onclick="loadHealth()">Neu prüfen</button></div>
+    <p class="hint">Alles, was morgen früh funktionieren muss. Ohne Netz spielt der Wecker statt Alexa das MP3-Tageslied.</p>
+    <ul class="checks" id="health"><li class="unknown"><span class="i">…</span>prüfe …</li></ul>
   </div>
   <div class="card">
     <h2>Jetzt</h2>
@@ -150,7 +205,18 @@ code { background: var(--chip); padding: 1px 5px; border-radius: 5px; font-size:
       <input type="range" id="volume" min="0" max="100" step="5" style="flex:1">
       <span id="volume-value" class="muted">–</span>
     </div>
-    <p class="hint" style="margin-top:10px">Heute: <span id="today-song"></span></p>
+    <p class="hint" style="margin-top:10px">Tageslied heute (MP3): <span id="today-song"></span></p>
+  </div>
+  <div class="card">
+    <h2>Licht</h2>
+    <div class="light-row">
+      <button onclick="lightAction('on')">💡 An</button>
+      <button onclick="lightAction('off')">Aus</button>
+      <span class="muted">Helligkeit</span>
+      <input type="range" id="light-bri" min="1" max="100" step="1" value="50">
+      <span id="light-bri-value" class="muted" style="min-width:3em">50 %</span>
+    </div>
+    <p class="hint" style="margin-top:8px">Effekte: Tab „Licht“ oder linker Drehknopf. Ein laufendes Morgen-/Abendlicht hält dann bis zu seinem Ende still.</p>
   </div>
 </section>
 
@@ -177,7 +243,7 @@ code { background: var(--chip); padding: 1px 5px; border-radius: 5px; font-size:
   </div>
   <div class="card">
     <h2>Musik</h2>
-    <p class="hint">Die Musik beginnt leise und wird lauter. Danach endet der Wecker von selbst.</p>
+    <p class="hint">Die Musik beginnt leise und wird lauter. Danach endet der Wecker von selbst. Im Zeitraum der Weihnachts-Playlist (Tab „Musik“) spielt stattdessen Alexa ein Weihnachtslied.</p>
     <div class="grid" id="wake-music"></div>
   </div>
   <div class="card">
@@ -250,7 +316,82 @@ code { background: var(--chip); padding: 1px 5px; border-radius: 5px; font-size:
 
 <!-- MUSIK -->
 <section class="tab" data-tab="music" data-title="Musik">
-  <div class="card">
+  <div class="subtabs" id="music-subtabs">
+    <button data-sub="xmas">🎄 Weihnachten</button>
+    <button data-sub="alexa">Alexa-Lieder</button>
+    <button data-sub="daily">Tageslied (MP3)</button>
+    <button data-sub="files">MP3-Dateien</button>
+  </div>
+
+  <div class="card sub" data-sub="xmas">
+    <h2>🎄 Weihnachts-Playlist (Alexa / Amazon Music)</h2>
+    <p class="status-line" id="christmas-next"></p>
+    <div class="grid">
+      <label class="switch" style="align-self:end"><input type="checkbox" id="christmas-enabled"> aktiv</label>
+      <label class="field">Von (MM-TT)<input id="christmas-start" maxlength="5" placeholder="11-25"></label>
+      <label class="field">Bis einschließlich (MM-TT)<input id="christmas-end" maxlength="5" placeholder="12-26"></label>
+      <label class="field">Tage ohne Wecker
+        <span class="row" style="flex-wrap:nowrap"><input type="checkbox" id="christmas-daily" title="täglich, auch ohne Wecker" style="width:auto">
+        <input id="christmas-time" type="time" title="Uhrzeit an Tagen ohne Wecker"></span></label>
+    </div>
+    <p class="hint" id="christmas-volume" style="margin-top:10px"></p>
+    <table class="songs"><thead><tr><th style="width:22px">#</th><th>Lied (ohne „Alexa“)</th><th style="width:64px">Länge</th><th class="opt">Spruch (Display)</th><th></th></tr></thead>
+      <tbody id="christmas-song-list"></tbody></table>
+    <div class="row end">
+      <button onclick="addChristmasSong()">＋ Lied</button>
+      <span class="spacer"></span>
+      <button class="primary" onclick="saveMusic()">Musik speichern</button>
+    </div>
+    <details style="margin-top:10px"><summary>Weitere Einstellungen &amp; so funktioniert’s</summary>
+      <div class="grid" style="margin-top:8px">
+        <label class="field">Stopp ohne Länge nach (min)<input id="christmas-stop" type="number" min="1" max="30" step="1"></label>
+        <label class="field">Musikdienst (wird angehängt)<input id="christmas-service" maxlength="40" placeholder="leer = Standarddienst der Alexa-App"></label>
+      </div>
+      <ul class="hint" style="padding-left:18px">
+        <li>Im Zeitraum spielt jeder Wecker statt der normalen Musik ein Lied dieser Liste, jeden Morgen das nächste (am ersten Tag Lied 1).</li>
+        <li>An Tagen mit Wecker (z. B. Schultage) gilt dessen Uhrzeit. Mit Häkchen bei „Tage ohne Wecker“ wird an allen anderen Tagen (Wochenende, Ferien, Feiertage) zur angegebenen Uhrzeit geweckt – nie zweimal am Tag.</li>
+        <li>Lied ohne Dienst eintragen, z. B. <code>spiele Last Christmas von Wham!</code> – gesagt wird „… auf Amazon Music“. Ohne Amazon Music Unlimited spielt Alexa evtl. nur ähnliche Titel.</li>
+        <li>Alexa meldet nicht, wann ein Lied endet: Mit <b>Länge</b> (m:ss) sagt der Wecker genau danach „Stopp“, sonst nach der Höchstdauer oben.</li>
+      </ul>
+    </details>
+  </div>
+
+  <div class="card sub" data-sub="alexa">
+    <h2>Alexa-Liederliste</h2>
+    <p class="hint">Für „Weckprogramm → Musik: Alexa“ (außerhalb der Weihnachts-Playlist) und die Tastenaktion „Liederliste“. Befehl so, wie man ihn Alexa sagen würde, ohne „Alexa“.</p>
+    <table><thead><tr><th>Befehl</th><th class="opt">Spruch</th><th></th></tr></thead>
+      <tbody id="alexa-song-list"></tbody></table>
+    <div class="row end">
+      <button onclick="addAlexaSong()">＋ Lied</button>
+      <span class="spacer"></span>
+      <button class="primary" onclick="saveMusic()">Musik speichern</button>
+    </div>
+  </div>
+
+  <div class="card sub" data-sub="daily">
+    <h2>Tageslied (MP3)</h2>
+    <p class="hint">Für „Weckprogramm → Musik: Tageslied“ und die Taste „Tageslied“. Reihenfolge: bestimmter Tag → Rotation → Standardlied.</p>
+    <div class="grid">
+      <label class="field">Standardlied<select id="default-song"></select></label>
+      <label class="field">Standardspruch<input id="default-message" maxlength="120"></label>
+    </div>
+    <h3 class="sub-h">Lieder für bestimmte Tage</h3>
+    <p class="hint"><code>12-24</code> = jedes Jahr, <code>2026-12-24</code> = nur einmal.</p>
+    <table><thead><tr><th style="width:120px">Datum</th><th>Datei</th><th class="opt">Spruch</th><th></th></tr></thead>
+      <tbody id="date-list"></tbody></table>
+    <div class="row end"><button onclick="addDate()">＋ Datum</button></div>
+    <h3 class="sub-h">Tägliche Rotation</h3>
+    <p class="hint">An allen anderen Tagen reihum ein Lied aus dieser Liste.</p>
+    <table><thead><tr><th>Datei</th><th class="opt">Spruch</th><th></th></tr></thead>
+      <tbody id="rotation-list"></tbody></table>
+    <div class="row end">
+      <button onclick="addRotation()">＋ Lied</button>
+      <span class="spacer"></span>
+      <button class="primary" onclick="saveMusic()">Musik speichern</button>
+    </div>
+  </div>
+
+  <div class="card sub" data-sub="files">
     <h2>MP3-Dateien</h2>
     <div class="row">
       <input type="file" id="upload" accept=".mp3,audio/mpeg" multiple style="flex:1">
@@ -259,42 +400,6 @@ code { background: var(--chip); padding: 1px 5px; border-radius: 5px; font-size:
     <p class="hint">▶ spielt am Wecker, 🎧 hier im Browser.</p>
     <audio id="player" controls style="width:100%; display:none"></audio>
     <ul class="files" id="file-list"></ul>
-  </div>
-  <div class="card">
-    <h2>Standard</h2>
-    <div class="grid">
-      <label class="field">Standardlied<select id="default-song"></select></label>
-      <label class="field">Standardspruch<input id="default-message" maxlength="120"></label>
-    </div>
-  </div>
-  <div class="card">
-    <h2>Lieder für bestimmte Tage</h2>
-    <p class="hint"><code>12-24</code> = jedes Jahr, <code>2026-12-24</code> = nur einmal. Hat Vorrang vor der Rotation.</p>
-    <table><thead><tr><th style="width:130px">Datum</th><th>Datei</th><th>Spruch</th><th></th></tr></thead>
-      <tbody id="date-list"></tbody></table>
-    <div class="row end"><button onclick="addDate()">＋ Datum</button></div>
-  </div>
-  <div class="card">
-    <h2>Tägliche Rotation</h2>
-    <p class="hint">An allen anderen Tagen kommt reihum ein Lied aus dieser Liste (bei „Tageslied“).</p>
-    <table><thead><tr><th>Datei</th><th>Spruch</th><th></th></tr></thead>
-      <tbody id="rotation-list"></tbody></table>
-    <div class="row end">
-      <button onclick="addRotation()">＋ Lied</button>
-      <span class="spacer"></span>
-      <button class="primary" onclick="saveMusic()">Musik speichern</button>
-    </div>
-  </div>
-  <div class="card">
-    <h2>Alexa-Liederliste</h2>
-    <p class="hint">Für „Weckprogramm → Musik: Alexa“ (jeden Tag reihum das nächste Lied) und die Tastenaktion „Liederliste“. Befehl so, wie man ihn Alexa sagen würde, ohne „Alexa“.</p>
-    <table><thead><tr><th>Befehl</th><th>Spruch</th><th></th></tr></thead>
-      <tbody id="alexa-song-list"></tbody></table>
-    <div class="row end">
-      <button onclick="addAlexaSong()">＋ Lied</button>
-      <span class="spacer"></span>
-      <button class="primary" onclick="saveMusic()">Musik speichern</button>
-    </div>
   </div>
 </section>
 
@@ -414,6 +519,10 @@ const val = id => $(id).value;
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'}[c]));
 const clone = o => JSON.parse(JSON.stringify(o));
 const shortName = f => f.replace(/^mp3\//, '');
+const minSec = sec => { sec = Math.round(sec); return `${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, '0')}`; };
+// Wie wake.alexa_level: Prozent -> Alexa-Stufe 1-10 (Python round = halb auf gerade).
+const alexaLevel = p => { const x = p / 10, f = Math.floor(x), r = x - f === 0.5 ? (f % 2 ? f + 1 : f) : Math.round(x); return Math.max(1, Math.min(10, r)); };
+const dayMonth = k => /^\d\d-\d\d$/.test(k || '') ? `${k.slice(3)}.${k.slice(0, 2)}.` : (k || '?');
 
 function toast(message, bad) {
   const t = $('toast'); t.textContent = message; t.className = 'show' + (bad ? ' bad' : '');
@@ -439,9 +548,11 @@ async function resetSection(section) {
   const r = await api('DELETE', '/api/settings/' + section);
   if (r.success) { toast('Standard wiederhergestellt'); await refresh(true); }
 }
+const CONTROL_TEXT = {play_today: 'Tageslied startet', play_random: 'Zufallssong startet', play_file: 'Spielt am Wecker',
+  stop_audio: 'Gestoppt', wake_test: 'Weckprogramm-Test läuft', wake_stop: 'Wecker aus', volume: 'Lautstärke gesetzt', brightness: 'Helligkeit gesetzt'};
 async function control(event, value) {
   const r = await api('POST', '/api/control', {event, value});
-  if (r.success) { toast('An den Wecker gesendet'); setTimeout(refresh, 700); }
+  if (r.success) { toast(CONTROL_TEXT[event] || 'An den Wecker gesendet'); setTimeout(refresh, 700); }
 }
 function options(list, selected) {
   return list.map(([value, text]) => `<option value="${esc(value)}"${value === selected ? ' selected' : ''}>${esc(text)}</option>`).join('');
@@ -483,7 +594,9 @@ function renderOverview() {
     $('next-alarm').textContent = at.toTimeString().slice(0, 5);
     const h = Math.floor(n.in_minutes / 60), m = n.in_minutes % 60;
     $('next-alarm-info').textContent = `${day} · ${n.label} · in ${h ? h + ' h ' : ''}${m} min`;
+    renderPlan(n.plan);
   } else {
+    renderPlan(null);
     $('next-alarm').textContent = '–';
     $('next-alarm-info').textContent = S.settings.alarms_enabled ? 'kein aktiver Wecker' : 'alle Wecker pausiert';
   }
@@ -502,6 +615,51 @@ function renderOverview() {
   $('now-playing').textContent = now;
   $('today-song').textContent = `${shortName(S.today.file)} – „${S.today.message}“`;
 }
+function renderPlan(plan) {
+  if (!plan) { $('next-alarm-plan').innerHTML = ''; return; }
+  const lines = [];
+  lines.push(`<div>💡 ${plan.light ? esc(plan.light) : '<span class="muted">kein Licht</span>'}</div>`);
+  if (plan.music) lines.push(`<div>🎵 ${esc(plan.music.startsWith('mp3/') ? shortName(plan.music) : plan.music)}</div>`);
+  else lines.push('<div class="muted">🔇 keine Musik</div>');
+  if (plan.fallback) lines.push(`<div class="muted">ohne Netz/Alexa-Fehler: ${esc(shortName(plan.fallback))}</div>`);
+  $('next-alarm-plan').innerHTML = lines.join('');
+}
+// Schnellschalter: jeder Wecker einzeln an/aus, sofort gespeichert.
+function renderQuickAlarms() {
+  const list = S.settings.alarms;
+  $('quick-alarms').innerHTML = list.map((a, i) => `<div class="quick-alarm">
+      <label class="switch"><input type="checkbox" ${a.enabled ? 'checked' : ''} onchange="quickToggleAlarm(${i}, this.checked)" aria-label="${esc(a.label)} an/aus"></label>
+      <b>${esc(a.time)}</b><span class="muted">${esc(a.label)} · ${esc((S.alarms_view[i] || {}).days_text || '')}</span></div>`).join('');
+}
+async function quickToggleAlarm(i, on) {
+  const list = clone(S.settings.alarms); list[i].enabled = on;
+  const r = await saveSection('alarms', list, true);
+  if (r.success) {
+    toast(`${list[i].label} ${on ? 'an' : 'aus'}`);
+    // Eigene, noch nicht gespeicherte Aenderungen im Tab "Wecker" nicht ueberschreiben.
+    if (alarms[i] && alarms[i].id === list[i].id) { alarms[i].enabled = on; renderAlarms(); }
+  } else renderQuickAlarms();
+}
+let healthTimer = null;
+async function loadHealth() {
+  clearTimeout(healthTimer);
+  healthTimer = setTimeout(loadHealth, 60000);
+  if (document.hidden) return;
+  const r = await fetch('/api/health').then(r => r.json()).catch(() => null);
+  if (!r) { $('health').innerHTML = '<li class="bad"><span class="i">✕</span>Weboberfläche nicht erreichbar</li>'; return; }
+  $('health').innerHTML = r.checks.map(c => {
+    const cls = c.ok === true ? 'ok' : c.ok === false ? 'bad' : 'unknown';
+    const icon = c.ok === true ? '✓' : c.ok === false ? '✕' : '?';
+    return `<li class="${cls}"><span class="i">${icon}</span><div>${esc(c.label)}<small>${esc(c.detail)}</small></div></li>`;
+  }).join('');
+  $('health-time').textContent = 'Stand ' + r.checked.slice(11, 16);
+}
+async function lightAction(mode) {
+  const r = await api('POST', '/api/action/test', {type: 'light', mode});
+  if (r.success) toast(mode === 'on' ? 'Licht an' : 'Licht aus');
+}
+$('light-bri').oninput = e => $('light-bri-value').textContent = e.target.value + ' %';
+$('light-bri').onchange = e => control('brightness', Number(e.target.value));
 $('master-switch').onchange = e => saveSection('alarms_enabled', e.target.checked);
 $('volume').onchange = e => control('volume', Number(e.target.value));
 $('volume').oninput = e => $('volume-value').textContent = e.target.value + ' %';
@@ -586,9 +744,15 @@ function renderTimeline() {
     lines.push(`<b>${lead ? t(-lead) : 'Weckzeit'}</b> Licht „${esc(eff.name)}“ mit ${w.brightness_start} %`);
     lines.push(`<b>${t(w.light_ramp_minutes - lead)}</b> Licht erreicht ${w.brightness_end} %`);
   }
+  const xmas = S.settings.music.christmas_playlist;
+  if (w.music !== 'none' && xmas.enabled && xmas.songs.length) {
+    lines.push(`<b>${dayMonth(xmas.start_date)}–${dayMonth(xmas.end_date)}</b> 🎄 statt der Musik unten: Alexa spielt das nächste Weihnachtslied, Stopp nach dem Lied (Länge) bzw. nach ${xmas.stop_after_minutes} min${xmas.daily ? `; an Tagen ohne Wecker um ${xmas.time}` : ''}`);
+    if (!S.settings.alexa.ha_device_id) lines.push('<span style="color:var(--bad)">Kein Echo eingestellt (Smart Home) – es läuft das MP3-Tageslied.</span>');
+    else lines.push('<span class="muted">Ohne Netz oder bei Alexa-Fehler spielt sofort das MP3-Tageslied.</span>');
+  }
   if (w.music !== 'none') {
     if (w.music === 'alexa') {
-      const lvl = p => Math.max(1, Math.min(10, Math.round(p / 10)));
+      const lvl = alexaLevel;
       lines.push(`<b>Weckzeit</b> Alexa spielt das nächste Lied der Alexa-Liederliste, Lautstärke ${lvl(w.volume_start)} → ${lvl(w.volume_end)} (von 10) in ${w.volume_ramp_seconds} s`);
       if (!S.settings.alexa.ha_device_id) lines.push('<span style="color:var(--bad)">Kein Echo eingestellt (Smart Home) – es läuft das MP3-Tageslied.</span>');
       lines.push(`<b>Ende</b> spätestens nach ${w.max_minutes} min (Alexa meldet das Liedende nicht)`);
@@ -785,6 +949,14 @@ async function saveKeys() { const r = await saveSection('keys', keys); if (r.suc
 
 // ---------- Musik ----------
 let music = {};
+function showMusicSub(name) {
+  if (!document.querySelector(`.card.sub[data-sub="${name}"]`)) name = 'xmas';
+  document.querySelectorAll('.card.sub').forEach(c => c.classList.toggle('active', c.dataset.sub === name));
+  document.querySelectorAll('#music-subtabs button').forEach(b => b.classList.toggle('active', b.dataset.sub === name));
+  try { localStorage.setItem('musicSub', name); } catch (e) { /* ohne Speicher egal */ }
+}
+document.querySelectorAll('#music-subtabs button').forEach(b => b.onclick = () => showMusicSub(b.dataset.sub));
+showMusicSub((() => { try { return localStorage.getItem('musicSub'); } catch (e) { return null; } })() || 'xmas');
 let shownFiles = '';
 function renderFiles() {
   shownFiles = JSON.stringify(S.music_files);
@@ -795,34 +967,107 @@ function renderFiles() {
 }
 function renderMusic() {
   renderFiles();
+  const christmas = music.christmas_playlist;
+  $('christmas-enabled').checked = christmas.enabled;
+  $('christmas-start').value = christmas.start_date;
+  $('christmas-end').value = christmas.end_date;
+  $('christmas-stop').value = christmas.stop_after_minutes;
+  $('christmas-service').value = christmas.service;
+  $('christmas-daily').checked = christmas.daily;
+  $('christmas-time').value = christmas.time;
+  $('christmas-time').disabled = !christmas.daily;
+  const last = christmas.songs.length - 1;
+  $('christmas-song-list').innerHTML = christmas.songs.map((d, i) => `<tr>
+    <td class="muted">${i + 1}</td>
+    <td><input aria-label="Weihnachtslied ${i + 1}" value="${esc(d.text)}" maxlength="200" placeholder="spiele Last Christmas von Wham!" onchange="music.christmas_playlist.songs[${i}].text=this.value"></td>
+    <td><input aria-label="Länge Lied ${i + 1}" value="${esc(d.length)}" maxlength="5" placeholder="${christmas.stop_after_minutes}:00" title="Liedlänge m:ss – danach Stopp. Leer = Höchstdauer." onchange="music.christmas_playlist.songs[${i}].length=this.value"></td>
+    <td class="opt"><input aria-label="Spruch Lied ${i + 1}" value="${esc(d.message)}" maxlength="120" placeholder="${esc(music.default_message)}" onchange="music.christmas_playlist.songs[${i}].message=this.value"></td>
+    <td style="white-space:nowrap">
+      <button class="small" title="Nach oben" ${i === 0 ? 'disabled' : ''} onclick="moveChristmasSong(${i},-1)">↑</button>
+      <button class="small" title="Nach unten" ${i === last ? 'disabled' : ''} onclick="moveChristmasSong(${i},1)">↓</button>
+      <button class="small" title="Am Echo abspielen" onclick="testChristmasSong(${i})">▶</button>
+      <button class="small danger" title="Lied entfernen" onclick="music.christmas_playlist.songs.splice(${i},1);renderMusic()">✕</button>
+    </td></tr>`).join('') || '<tr><td class="muted" colspan="5">Keine Lieder – mindestens eins eintragen oder die Playlist ausschalten.</td></tr>';
   $('default-song').innerHTML = fileOptions(music.default_song);
   $('default-message').value = music.default_message;
   $('date-list').innerHTML = music.dates.map((d, i) => `<tr>
-    <td><input value="${esc(d.date)}" placeholder="MM-DD" onchange="music.dates[${i}].date=this.value"></td>
+    <td><input value="${esc(d.date)}" placeholder="MM-TT" onchange="music.dates[${i}].date=this.value"></td>
     <td><select onchange="music.dates[${i}].file=this.value">${fileOptions(d.file)}</select></td>
-    <td><input value="${esc(d.message)}" onchange="music.dates[${i}].message=this.value"></td>
+    <td class="opt"><input value="${esc(d.message)}" onchange="music.dates[${i}].message=this.value"></td>
     <td><button class="small danger" onclick="music.dates.splice(${i},1);renderMusic()">✕</button></td></tr>`).join('');
   $('rotation-list').innerHTML = music.rotation.map((d, i) => `<tr>
     <td><select onchange="music.rotation[${i}].file=this.value">${fileOptions(d.file)}</select></td>
-    <td><input value="${esc(d.message)}" onchange="music.rotation[${i}].message=this.value"></td>
+    <td class="opt"><input value="${esc(d.message)}" onchange="music.rotation[${i}].message=this.value"></td>
     <td><button class="small danger" onclick="music.rotation.splice(${i},1);renderMusic()">✕</button></td></tr>`).join('');
   $('alexa-song-list').innerHTML = music.alexa_songs.map((d, i) => `<tr>
     <td><input value="${esc(d.text)}" maxlength="200" placeholder="spiele Here Comes the Sun von den Beatles" onchange="music.alexa_songs[${i}].text=this.value"></td>
-    <td><input value="${esc(d.message)}" maxlength="120" onchange="music.alexa_songs[${i}].message=this.value"></td>
+    <td class="opt"><input value="${esc(d.message)}" maxlength="120" onchange="music.alexa_songs[${i}].message=this.value"></td>
     <td style="white-space:nowrap"><button class="small" title="Am Echo abspielen" onclick="testAlexaSong(${i})">▶</button>
       <button class="small danger" onclick="music.alexa_songs.splice(${i},1);renderMusic()">✕</button></td></tr>`).join('');
 }
+$('christmas-enabled').onchange = e => music.christmas_playlist.enabled = e.target.checked;
+$('christmas-start').onchange = e => music.christmas_playlist.start_date = e.target.value;
+$('christmas-end').onchange = e => music.christmas_playlist.end_date = e.target.value;
+$('christmas-daily').onchange = e => { music.christmas_playlist.daily = e.target.checked; $('christmas-time').disabled = !e.target.checked; };
+$('christmas-time').onchange = e => music.christmas_playlist.time = e.target.value;
+$('christmas-service').onchange = e => music.christmas_playlist.service = e.target.value.trim();
+$('christmas-stop').onchange = e => { music.christmas_playlist.stop_after_minutes = Number(e.target.value); renderMusic(); };
 $('default-song').onchange = e => music.default_song = e.target.value;
 $('default-message').onchange = e => music.default_message = e.target.value;
 function addDate() { music.dates.push({date: '', file: S.music_files[0] || '', message: ''}); renderMusic(); }
 function addAlexaSong() { music.alexa_songs.push({text: 'spiele ', message: ''}); renderMusic(); }
+function addChristmasSong() { music.christmas_playlist.songs.push({text: 'spiele ', message: '', length: ''}); renderMusic(); }
+// Wie scheduler.alexa_music_command: Musikdienst anhaengen, wenn er nicht schon im Befehl steht.
+function withService(text, service) {
+  text = text.trim(); service = (service || '').trim();
+  return !service || text.toLowerCase().includes(service.toLowerCase()) ? text : `${text} auf ${service}`;
+}
+function renderChristmasNext() {
+  const x = S.settings.music.christmas_playlist, n = S.next_alarm;
+  let text = '';
+  if (!x.enabled) text = 'Playlist ist aus.';
+  else if (S.settings.wake.music === 'none') text = '⚠ Weckprogramm → Musik steht auf „keine“ – die Playlist wird nicht gespielt.';
+  else if (!S.settings.alarms_enabled || !n) text = 'Kein aktiver Wecker – die Playlist spielt erst mit einem Wecker.';
+  else if (n.christmas) {
+    const at = new Date(n.at);
+    text = `Nächster Wecker (${n.label}) ${DAYS[(at.getDay() + 6) % 7]} ${at.toLocaleDateString('de-DE', {day: '2-digit', month: '2-digit'})} ${n.at.slice(11)}: „${n.christmas.text}“, Stopp nach ${minSec(n.christmas.max_minutes * 60)} min.`;
+  } else text = `Der nächste Wecker liegt außerhalb von ${dayMonth(x.start_date)}–${dayMonth(x.end_date)}.`;
+  if (x.enabled && x.daily) text += ` An Tagen ohne Wecker: ${x.time}.`;
+  if (x.enabled && !S.settings.alexa.ha_device_id) text += ' ⚠ Kein Echo unter „Smart Home“ gewählt – dann läuft das MP3-Tageslied.';
+  $('christmas-next').textContent = text;
+  const w = S.settings.wake;
+  $('christmas-volume').innerHTML = w.music === 'none' ? '' :
+    `🔈→🔊 <b>Leise starten, lauter werden:</b> Alexa-Stufe ${alexaLevel(w.volume_start)} → ${alexaLevel(w.volume_end)} (von 10)` +
+    (w.volume_ramp_seconds ? ` über ${w.volume_ramp_seconds} s` : ' – sofort, Rampe ist 0 s') +
+    ` · <a href="#wake" onclick="showTab('wake');return false">im Weckprogramm ändern</a>`;
+}
+function moveChristmasSong(i, direction) {
+  const songs = music.christmas_playlist.songs;
+  const target = i + direction;
+  if (target < 0 || target >= songs.length) return;
+  [songs[i], songs[target]] = [songs[target], songs[i]];
+  renderMusic();
+}
+async function testChristmasSong(i) {
+  if (!S.settings.alexa.ha_device_id) { toast('Erst unter Smart Home ein Echo wählen', true); return; }
+  const song = music.christmas_playlist.songs[i];
+  if (!song || !song.text.trim()) { toast('Erst einen Alexa-Befehl eintragen', true); return; }
+  const r = await api('POST', '/api/action/test?direct=1', {
+    type: 'ha_alexa', device_id: S.settings.alexa.ha_device_id,
+    text: withService(song.text, music.christmas_playlist.service)
+  });
+  if (r.success) toast(r.message || 'Gesendet');
+}
 async function testAlexaSong(i) {
   if (!S.settings.alexa.ha_device_id) { toast('Erst unter Smart Home ein Echo wählen', true); return; }
   const r = await api('POST', '/api/action/test?direct=1', {type: 'ha_alexa', device_id: S.settings.alexa.ha_device_id, text: music.alexa_songs[i].text});
   if (r.success) toast(r.message || 'Gesendet');
 }
 function addRotation() { music.rotation.push({file: S.music_files[0] || '', message: ''}); renderMusic(); }
-async function saveMusic() { const r = await saveSection('music', music); if (r.success) { music = clone(S.settings.music); renderMusic(); } }
+async function saveMusic() {
+  const r = await saveSection('music', music);
+  if (r.success) { music = clone(S.settings.music); renderMusic(); renderTimeline(); }
+}
 function listen(f) { const p = $('player'); p.style.display = 'block'; p.src = '/api/music/file?file=' + encodeURIComponent(f); p.play(); }
 async function upload() {
   const files = $('upload').files;
@@ -963,14 +1208,54 @@ function renderGreetings() {
 function addGreeting() { greetings.push({start: '12:00', end: '13:00', text: '', backlight: true}); renderGreetings(); }
 async function saveGreetings() { const r = await saveSection('greetings', greetings); if (r.success) greetings = clone(S.settings.greetings); }
 
+// ---------- Ungespeicherte Änderungen ----------
+// Bereich -> [lokaler Stand, gespeicherter Stand, Tab, Speichern-Funktion]
+const EDITS = {
+  alarms: () => [alarms, S.settings.alarms, 'alarms', 'saveAlarms'],
+  wake: () => [wake, S.settings.wake, 'wake', 'saveWake'],
+  programs: () => [programs, S.settings.programs, 'programs', 'savePrograms'],
+  keys: () => [keys, S.settings.keys, 'keys', 'saveKeys'],
+  music: () => [music, S.settings.music, 'music', 'saveMusic'],
+  effects: () => [effects, S.settings.effects, 'light', 'saveEffects'],
+  greetings: () => [greetings, S.settings.greetings, 'display', 'saveGreetings'],
+};
+let dirtyTabs = new Set();
+function updateDirty() {
+  if (!S) return;
+  const tabs = new Set();
+  for (const get of Object.values(EDITS)) {
+    const [local, saved, tab, fn] = get();
+    const dirty = JSON.stringify(local) !== JSON.stringify(saved);
+    if (dirty) tabs.add(tab);
+    document.querySelectorAll(`button[onclick^="${fn}("]`).forEach(b => b.classList.toggle('dirty', dirty));
+  }
+  dirtyTabs = tabs;
+  document.querySelectorAll('nav button').forEach(b => {
+    b.classList.toggle('dirty', tabs.has(b.dataset.tab));
+    b.title = tabs.has(b.dataset.tab) ? 'Ungespeicherte Änderungen' : '';
+  });
+}
+['input', 'change', 'click'].forEach(type => document.addEventListener(type, () => setTimeout(updateDirty, 0), true));
+window.addEventListener('beforeunload', e => { if (dirtyTabs.size) { e.preventDefault(); e.returnValue = ''; } });
+
 // ---------- Laden ----------
+let lastOk = null;
 async function refresh(all) {
   const r = await fetch('/api/state').then(r => r.json()).catch(() => null);
-  if (!r) { $('clock-status').innerHTML = '<b class="off">●</b> Weboberfläche nicht erreichbar'; return; }
+  if (!r) {
+    $('clock-status').innerHTML = '<b class="off">●</b> Weboberfläche nicht erreichbar';
+    $('offline').textContent = 'Keine Verbindung zum Wecker' + (lastOk ? ` – Anzeige von ${lastOk.toTimeString().slice(0, 5)} Uhr` : '') + '. Prüfe WLAN/Pi.';
+    $('offline').classList.add('show');
+    return;
+  }
+  $('offline').classList.remove('show');
+  lastOk = new Date();
   const first = !S;
   S = r;
   renderOverview();
+  renderQuickAlarms();
   renderCalendar();
+  renderChristmasNext();
   if (first || all) {
     alarms = clone(S.settings.alarms); wake = clone(S.settings.wake); keys = clone(S.settings.keys);
     music = clone(S.settings.music); effects = clone(S.settings.effects); greetings = clone(S.settings.greetings);
@@ -981,9 +1266,11 @@ async function refresh(all) {
     // Nur die Dateiliste nachziehen; Formulare nicht anfassen (Fokus/ungespeicherte Eingaben).
     if (JSON.stringify(S.music_files) !== shownFiles) renderFiles();
   }
+  updateDirty();
 }
 initTabs();
-refresh(true);
+refresh(true).then(loadHealth);
+document.addEventListener('visibilitychange', () => { if (!document.hidden) { refresh(); loadHealth(); } });
 setInterval(() => { if (!document.hidden) refresh(); }, 5000);
 </script>
 </body>

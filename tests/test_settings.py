@@ -45,6 +45,15 @@ class SettingsTests(TempSettingsTestCase):
             ('keys', {'A': {'type': 'home_assistant', 'service': 'toggle', 'entity_id': 'x'}}, 'Service'),
             ('keys', {'B': {'type': 'alexa', 'command': 'text', 'text': ''}}, 'Taste B'),
             ('music', {**settings.get('music'), 'default_song': '../../etc/passwd.mp3'}, 'Musikordner'),
+            ('music', {**settings.get('music'), 'christmas_playlist': {
+                **settings.get('music')['christmas_playlist'], 'start_date': '2026-11-25'}},
+             'ohne Jahr'),
+            ('music', {**settings.get('music'), 'christmas_playlist': {
+                **settings.get('music')['christmas_playlist'],
+                'songs': [{'text': 'spiele X', 'length': '3:75'}]}}, 'Laenge'),
+            ('music', {**settings.get('music'), 'christmas_playlist': {
+                **settings.get('music')['christmas_playlist'], 'songs': []}},
+             'mindestens ein Lied'),
             ('effects', [], 'Mindestens'),
         ]
         for section, value, fragment in cases:

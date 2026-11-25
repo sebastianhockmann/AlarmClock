@@ -39,6 +39,7 @@ so ask the user to run `sudo systemctl restart alarmclock.service alarmclock-web
 | `config/settings.json` | web UI overrides | no | web UI / `settings.save()` |
 | `config/school_holidays.json` | Thüringen school holidays seed (works offline) | yes | `tools/update_school_holidays.py` |
 | `config/school_holidays_cache.json` | same, refreshed daily from openholidaysapi.org | no | `school_calendar.HolidayUpdater` |
+| `config/alarm_state.json` | alarms already fired per date (survives restarts) | no | `scheduler.AlarmScheduler` |
 
 - `config/__init__.py` loads `hardware.json` into module constants (`config.LCD_ADDRESS`, …),
   plus paths. Env overrides: `ALARM_ALSA_DEVICE`, `ALARM_DEBUG`, `ALARM_WEB_HOST/PORT`,
@@ -59,7 +60,7 @@ sends runtime commands to the clock over UDP on localhost (`ipc.py`, port from `
 | Process | Entry | Role |
 |---|---|---|
 | Clock | `alarm_clock.py` | 20 ms main loop: `controller.tick()`, drain event queue, update LCD; runs `ipc.CommandServer` |
-| Web UI | `webserver.py` (Flask) + `templates/index.html` (vanilla JS SPA) | JSON API for all settings, MP3 upload/preview, tests; never plays audio itself |
+| Web UI | `webserver.py` (Flask) + `templates/index.html` (vanilla JS SPA) | JSON API for all settings, MP3 upload/preview, tests, `/api/health` (wake check); never plays audio itself |
 
 Modules:
 
@@ -78,16 +79,27 @@ Modules:
   Missing data = school day (better wake once too often).
 - `network.py` — live check: `not_connected(error)` (errno 113 etc., never timeouts),
   `wait_reachable()`; `integrations._open()` waits and resends; `NetworkMonitor` thread
-  logs outages, status `network` in ipc status.
+  logs outages, status `network` in ipc status; `ClockController(network=...)` uses it to
+  wake with MP3 instead of Alexa when offline; LCD shows `Netz?` top right.
+- System side (`tools/install_system.sh`, run once with sudo): persistent journal (RPi OS
+  default is volatile!), `tools/netwatch.sh` as root timer (reconnect → restart NM → reload
+  brcmfmac → reboot, never during an alarm), hardware watchdog, NM autoconnect-retries 0.
 - `scheduler.py` — `AlarmScheduler.due(now)` → `[('light'|'alarm', alarm)]`, one per alarm
-  per date (in-memory), light lead handled across midnight; `next_alarm`, song selection
-  (exact date → yearly date → rotation → default; or random from `mp3/`), greetings.
+  per date (persisted in `config/alarm_state.json` when `state_file` is given, as `alarm_clock`
+  does), checks every minute since the last call and catches up missed ones up to
+  `CATCH_UP_MINUTES` (10) after a restart or stalled loop, light lead handled across midnight; `next_alarm`, song selection
+  (`wake_item`: within the `music.christmas_playlist` period always that day's Alexa song with
+  `max_minutes` = song length, command + `auf <service>` (Amazon Music); `christmas_alarm()` adds a
+  virtual daily alarm on days without a regular alarm when `daily`; else exact date → yearly date → rotation → default; or random
+  from `mp3/`), greetings.
 - `integrations.py` — remote actions (`http`, `home_assistant`, `alexa` via
   `alexa_remote_control.sh`, arg list, no shell); `run()` is async and reports failures via callback.
 - `weather.py` — Open-Meteo fetch + LCD summary, background thread, cached.
 - `ipc.py` — `CommandServer` (whitelisted `REMOTE_EVENTS`, status query) and `send()/status()`.
 - `lighting.py` — `WLEDManager` (background thread, bounded queue keeps only newest unsent
-  state; no retries; `fetch()` for sync GETs in web requests), `EffectBrowser` (left knob).
+  state; on connection failure the newest state is resent every 5 s for up to 15 min unless a
+  newer one arrives — states are absolute, so resending is safe; logs only on/offline changes;
+  `fetch()` for sync GETs in web requests), `EffectBrowser` (left knob).
 - `audio.py` — `AudioPlayer` wraps `mpg123 -R`; volume via stdin, `is_playing`/`finished` from `@P`.
 - `controls_mcp.py` — I2C input driver (`open_controls(emit)`), MCP23017 + PCF8574, own thread.
 - `lcd.py` (imported lazily in `main()`), `chime.py`, `button.py` (legacy GPIO, disabled).
@@ -95,7 +107,7 @@ Modules:
 Events (queue, main thread only): input `left_rotate`, `left_press`, `key`, `right_rotate`,
 `right_press`, `right_hold`, `right_press_rotate`, `legacy_press`, `error`; remote (ipc) `key`, `action`,
 `play_today`, `play_random`, `play_file`, `stop_audio`, `wake_test`, `wake_stop`, `volume`,
-`notice`; internal `weather_result`, `alexa_error` (wake command failed → fall back to MP3).
+`brightness`, `notice`; internal `weather_result`, `alexa_error` (wake command failed → fall back to MP3).
 
 Keypad action types (`settings.ACTION_SPECS`): `none`, `effect`, `light`, `music`, `display`,
 `songs` (browse MP3s or `music.alexa_songs` with the right knob), `snooze`, `wake_test`,
